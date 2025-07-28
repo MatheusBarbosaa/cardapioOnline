@@ -87,7 +87,7 @@ export const createStripeCheckout = async ({
             name: product.name,
             images: [product.imageUrl],
           },
-          unit_amount: dbProduct.price * 100,
+          unit_amount: Math.round(dbProduct.price * 100),
         },
         quantity: product.quantity,
       };
