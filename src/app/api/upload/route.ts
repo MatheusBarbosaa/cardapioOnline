@@ -1,24 +1,23 @@
-// /app/api/upload/route.ts
-import { randomUUID } from 'crypto';
-import { writeFile } from 'fs/promises';
-import { NextResponse } from 'next/server';
-import path from 'path';
+import { writeFile } from "fs/promises";
+import { NextRequest, NextResponse } from "next/server";
+import path from "path";
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   const formData = await req.formData();
-  const file = formData.get('file') as File;
+  const file: File | null = formData.get("file") as unknown as File;
 
   if (!file) {
-    return NextResponse.json({ error: 'Nenhum arquivo enviado' }, { status: 400 });
+    return NextResponse.json({ error: "Arquivo não encontrado" }, { status: 400 });
   }
 
   const bytes = await file.arrayBuffer();
   const buffer = Buffer.from(bytes);
 
-  const fileName = `${randomUUID()}-${file.name}`;
-  const filePath = path.join(process.cwd(), 'public', 'uploads', fileName);
+  const filename = `${Date.now()}-${file.name}`;
+  const filepath = path.join(process.cwd(), "public", "uploads", filename);
 
-  await writeFile(filePath, buffer);
+  await writeFile(filepath, buffer);
 
-  return NextResponse.json({ url: `/uploads/${fileName}` });
+  const url = `/uploads/${filename}`;
+  return NextResponse.json({ url });
 }
