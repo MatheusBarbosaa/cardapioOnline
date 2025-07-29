@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { generateToken,hashPassword } from '@/lib/auth';
+import { generateToken } from '@/lib/auth';
+import { hashPassword } from '@/lib/auth'; // ou '@/lib/auth' se colocou lá
 import { db } from '@/lib/prisma';
 
 export async function POST(request: NextRequest) {
@@ -41,13 +42,12 @@ export async function POST(request: NextRequest) {
     // Hash da senha
     const hashedPassword = await hashPassword(password);
 
-    // URLs de imagens padrão (usando placeholder services ou suas próprias imagens)
+    // URLs de imagens padrão
     const defaultAvatarUrl = 'https://images.unsplash.com/photo-1514933651103-005eec06c04b?w=400&h=400&fit=crop&crop=center';
     const defaultCoverUrl = 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&h=400&fit=crop&crop=center';
 
     // Criar restaurante e usuário em transação
     const result = await db.$transaction(async (tx) => {
-      // Criar restaurante
       const restaurant = await tx.restaurant.create({
         data: {
           name: restaurantName,
@@ -58,7 +58,6 @@ export async function POST(request: NextRequest) {
         }
       });
 
-      // Criar usuário admin
       const user = await tx.user.create({
         data: {
           name: ownerName,
@@ -72,8 +71,21 @@ export async function POST(request: NextRequest) {
       return { restaurant, user };
     });
 
+    // Buscar o user com restaurant.slug
+    const fullUser = await db.user.findUnique({
+      where: { id: result.user.id },
+      include: { restaurant: { select: { slug: true } } }
+    });
+
+    if (!fullUser) {
+      return NextResponse.json(
+        { error: 'Erro ao buscar dados do usuário após criação' },
+        { status: 500 }
+      );
+    }
+
     // Gerar token
-    const token = generateToken(result.user);
+    const token = await generateToken(fullUser);
 
     const response = NextResponse.json({
       message: 'Restaurante criado com sucesso',
@@ -95,8 +107,8 @@ export async function POST(request: NextRequest) {
 
     return response;
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   } catch (error) {
+    console.error('Erro no registro:', error);
     return NextResponse.json(
       { error: 'Erro interno do servidor' }, 
       { status: 500 }

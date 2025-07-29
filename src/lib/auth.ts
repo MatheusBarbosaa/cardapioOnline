@@ -1,5 +1,6 @@
 import { User } from '@prisma/client';
 import { compare } from 'bcryptjs';
+import { hash } from 'bcryptjs'; // já deve estar instalado
 import type { JWTPayload as JoseJWTPayload } from 'jose';
 import { jwtVerify, SignJWT } from 'jose';
 
@@ -58,4 +59,10 @@ export async function verifyToken(token: string): Promise<JWTPayload | null> {
  */
 export async function comparePassword(plainPassword: string, hashedPassword: string): Promise<boolean> {
   return compare(plainPassword, hashedPassword);
+}
+
+
+
+export async function hashPassword(password: string): Promise<string> {
+  return await hash(password, 10); // 10 é o salt rounds
 }
