@@ -1,6 +1,5 @@
 import { User } from '@prisma/client';
-import { compare } from 'bcryptjs';
-import { hash } from 'bcryptjs'; // já deve estar instalado
+import { compare, hash } from 'bcryptjs';
 import type { JWTPayload as JoseJWTPayload } from 'jose';
 import { jwtVerify, SignJWT } from 'jose';
 
@@ -11,15 +10,16 @@ export interface JWTPayload extends JoseJWTPayload {
   restaurantId: string;
   email: string;
   role: string;
+  restaurantSlug: string; // importante!
 }
 
 export async function generateToken(user: User & { restaurant: { slug: string } }): Promise<string> {
-  const payload = {
+  const payload: JWTPayload = {
     userId: user.id,
     restaurantId: user.restaurantId,
     email: user.email,
     role: user.role,
-    restaurantSlug: user.restaurant.slug, // ADICIONADO
+    restaurantSlug: user.restaurant.slug,
   };
 
   return await new SignJWT(payload)
@@ -28,7 +28,6 @@ export async function generateToken(user: User & { restaurant: { slug: string } 
     .setExpirationTime('7d')
     .sign(JWT_SECRET);
 }
-
 
 export async function verifyToken(token: string): Promise<JWTPayload | null> {
   try {
@@ -42,7 +41,8 @@ export async function verifyToken(token: string): Promise<JWTPayload | null> {
       typeof payload.userId !== 'string' ||
       typeof payload.restaurantId !== 'string' ||
       typeof payload.email !== 'string' ||
-      typeof payload.role !== 'string'
+      typeof payload.role !== 'string' ||
+      typeof payload.restaurantSlug !== 'string'
     ) {
       return null;
     }
@@ -54,15 +54,23 @@ export async function verifyToken(token: string): Promise<JWTPayload | null> {
   }
 }
 
-/**
- * Compara a senha fornecida com a senha criptografada salva no banco.
- */
 export async function comparePassword(plainPassword: string, hashedPassword: string): Promise<boolean> {
   return compare(plainPassword, hashedPassword);
 }
 
-
-
 export async function hashPassword(password: string): Promise<string> {
-  return await hash(password, 10); // 10 é o salt rounds
+  return await hash(password, 10);
+}
+
+// ✅ NOVA FUNÇÃO
+export function getSlugFromToken(request: Request): string | null {
+  try {
+    const token = request.headers.get('authorization')?.replace('Bearer ', '');
+    if (!token) return null;
+
+    const decoded = JSON.parse(atob(token.split('.')[1])) as { restaurantSlug?: string };
+    return decoded.restaurantSlug ?? null;
+  } catch {
+    return null;
+  }
 }

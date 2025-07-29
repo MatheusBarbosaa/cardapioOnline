@@ -9,13 +9,13 @@ import {
   ShoppingCart,
   User,
 } from "lucide-react";
-import { cookies } from 'next/headers'; // sem o tipo, não precisa
+import { cookies } from 'next/headers';
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
 interface AdminLayoutProps {
   children: React.ReactNode;
-  params: { slug: string };
+  params: Promise<{ slug: string }>;
 }
 
 export default async function AdminLayout({
@@ -24,7 +24,7 @@ export default async function AdminLayout({
 }: AdminLayoutProps) {
   const { slug } = await params;
 
-  // cookies() já retorna o objeto ReadonlyRequestCookies, não usar await
+  // cookies() já retorna uma Promise no Next.js 15+
   const cookieStore = await cookies();
   const token = cookieStore.get("auth-token")?.value;
 

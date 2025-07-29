@@ -1,23 +1,157 @@
-import { writeFile } from "fs/promises";
-import { NextRequest, NextResponse } from "next/server";
-import path from "path";
+import { verify } from 'jsonwebtoken';
+import { cookies } from 'next/headers';
+import { NextResponse } from 'next/server';
 
-export async function POST(req: NextRequest) {
-  const formData = await req.formData();
-  const file: File | null = formData.get("file") as unknown as File;
+import { db } from '@/lib/prisma';
 
-  if (!file) {
-    return NextResponse.json({ error: "Arquivo não encontrado" }, { status: 400 });
+// Verificar se as variáveis de ambiente estão configuradas
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+// Função para criar cliente Supabase dinamicamente
+async function getSupabaseClient() {
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return null;
+  }
+  
+  const { createClient } = await import('@supabase/supabase-js');
+  return createClient(supabaseUrl, supabaseServiceKey);
+}
+
+// Função para validar autenticação
+async function validateAuth() {
+  const cookieStore = await cookies();
+  const token = cookieStore.get('auth-token')?.value;
+
+  if (!token) {
+    return null;
   }
 
-  const bytes = await file.arrayBuffer();
-  const buffer = Buffer.from(bytes);
+  try {
+    const decoded = verify(token, process.env.JWT_SECRET!) as { restaurantId: string };
+    return decoded;
+  } catch {
+    return null;
+  }
+}
 
-  const filename = `${Date.now()}-${file.name}`;
-  const filepath = path.join(process.cwd(), "public", "uploads", filename);
+// Função para gerar nome único do arquivo
+function generateFileName(originalName: string): string {
+  const timestamp = Date.now();
+  const randomString = Math.random().toString(36).substring(2, 15);
+  const extension = originalName.split('.').pop();
+  return `${timestamp}-${randomString}.${extension}`;
+}
 
-  await writeFile(filepath, buffer);
+// POST - Para uploads de imagem
+export async function POST(request: Request) {
+  try {
+    // Obter cliente Supabase
+    const supabase = await getSupabaseClient();
+    
+    if (!supabase) {
+      return NextResponse.json({ 
+        error: 'Supabase não configurado. Verifique as variáveis de ambiente NEXT_PUBLIC_SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY' 
+      }, { status: 500 });
+    }
 
-  const url = `/uploads/${filename}`;
-  return NextResponse.json({ url });
+    const decoded = await validateAuth();
+    
+    if (!decoded) {
+      return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
+    }
+
+    const formData = await request.formData();
+    const file = formData.get('file') as File;
+    
+    if (!file) {
+      return NextResponse.json({ error: 'Nenhum arquivo fornecido' }, { status: 400 });
+    }
+
+    // Validar tipo de arquivo
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (!allowedTypes.includes(file.type)) {
+      return NextResponse.json({ 
+        error: 'Tipo de arquivo não permitido. Use JPEG, PNG, WebP ou GIF.' 
+      }, { status: 400 });
+    }
+
+    // Validar tamanho do arquivo (5MB max)
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (file.size > maxSize) {
+      return NextResponse.json({ 
+        error: 'Arquivo muito grande. Máximo 5MB.' 
+      }, { status: 400 });
+    }
+
+    // Converter File para ArrayBuffer
+    const fileBuffer = await file.arrayBuffer();
+    
+    // Gerar nome único para o arquivo
+    const fileName = generateFileName(file.name);
+    
+    // Upload para o Supabase Storage
+    const { error: uploadError } = await supabase.storage
+      .from('restaurant-images') // nome do bucket
+      .upload(`uploads/${fileName}`, fileBuffer, {
+        contentType: file.type,
+        upsert: false
+      });
+
+    if (uploadError) {
+      console.error('Erro no upload do Supabase:', uploadError);
+      return NextResponse.json({ 
+        error: 'Erro ao fazer upload da imagem' 
+      }, { status: 500 });
+    }
+
+    // Obter URL pública da imagem
+    const { data: urlData } = supabase.storage
+      .from('restaurant-images')
+      .getPublicUrl(`uploads/${fileName}`);
+
+    if (!urlData.publicUrl) {
+      return NextResponse.json({ 
+        error: 'Erro ao obter URL da imagem' 
+      }, { status: 500 });
+    }
+
+    return NextResponse.json({ 
+      success: true, 
+      imageUrl: urlData.publicUrl,
+      fileName: fileName
+    });
+    
+  } catch (error) {
+    console.error('Erro no upload:', error);
+    return NextResponse.json({ error: 'Erro interno do servidor' }, { status: 500 });
+  }
+}
+
+// PUT - Para atualizar dados do restaurante
+export async function PUT(request: Request) {
+  try {
+    const body = await request.json();
+
+    const decoded = await validateAuth();
+    
+    if (!decoded) {
+      return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
+    }
+
+    const updatedRestaurant = await db.restaurant.update({
+      where: { id: decoded.restaurantId },
+      data: {
+        name: body.name,
+        description: body.description,
+        avatarImageUrl: body.avatarImageUrl,
+        coverImageUrl: body.coverImageUrl,
+      },
+    });
+
+    return NextResponse.json(updatedRestaurant);
+  } catch (error) {
+    console.error('Erro ao atualizar restaurante:', error);
+    return NextResponse.json({ error: 'Erro ao atualizar' }, { status: 500 });
+  }
 }
