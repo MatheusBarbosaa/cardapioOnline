@@ -83,15 +83,6 @@ export default function SettingsPageClient({ restaurant }: SettingsPageClientPro
 
       const data = await res.json();
 
-      // 🔍 DEBUG - LOGS TEMPORÁRIOS
-      console.log('=== DEBUG UPLOAD RESPONSE ===');
-      console.log('Response status:', res.status);
-      console.log('Response ok:', res.ok);
-      console.log('Response data:', data);
-      console.log('data.imageUrl exists:', !!data.imageUrl);
-      console.log('imageUrl from response:', data.imageUrl);
-      console.log('=============================');
-
       // ✅ CORREÇÃO FINAL: usar data.imageUrl
       if (res.ok && data.imageUrl) {
         console.log('✅ SUCESSO: Atualizando formData com nova URL:', data.imageUrl);
