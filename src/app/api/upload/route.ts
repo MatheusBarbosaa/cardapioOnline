@@ -116,11 +116,11 @@ export async function POST(request: Request) {
       }, { status: 500 });
     }
 
-    return NextResponse.json({ 
-      success: true, 
-      imageUrl: urlData.publicUrl,
-      fileName: fileName
-    });
+ return NextResponse.json({ 
+  success: true, 
+  imageUrl: urlData.publicUrl, 
+  fileName: fileName
+});
     
   } catch (error) {
     console.error('Erro no upload:', error);

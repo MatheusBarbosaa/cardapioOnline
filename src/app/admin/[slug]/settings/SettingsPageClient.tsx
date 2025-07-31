@@ -83,13 +83,26 @@ export default function SettingsPageClient({ restaurant }: SettingsPageClientPro
 
       const data = await res.json();
 
-      if (res.ok && data.url) {
-        setFormData((prev) => ({ ...prev, [field]: data.url }));
+      // 🔍 DEBUG - LOGS TEMPORÁRIOS
+      console.log('=== DEBUG UPLOAD RESPONSE ===');
+      console.log('Response status:', res.status);
+      console.log('Response ok:', res.ok);
+      console.log('Response data:', data);
+      console.log('data.imageUrl exists:', !!data.imageUrl);
+      console.log('imageUrl from response:', data.imageUrl);
+      console.log('=============================');
+
+      // ✅ CORREÇÃO FINAL: usar data.imageUrl
+      if (res.ok && data.imageUrl) {
+        console.log('✅ SUCESSO: Atualizando formData com nova URL:', data.imageUrl);
+        setFormData((prev) => ({ ...prev, [field]: data.imageUrl }));
         toast.success("Imagem enviada com sucesso!");
       } else {
+        console.error('❌ Erro na condição - res.ok:', res.ok, 'data.imageUrl:', data.imageUrl);
         toast.error("Falha ao enviar imagem.");
       }
-    } catch {
+    } catch (error) {
+      console.error('❌ Erro no fetch:', error);
       toast.error("Erro no upload da imagem.");
     }
 
@@ -131,12 +144,18 @@ export default function SettingsPageClient({ restaurant }: SettingsPageClientPro
           onChange={(e) => handleImageUpload(e, "avatarImageUrl")}
         />
         {formData.avatarImageUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={formData.avatarImageUrl}
-            alt="Avatar Preview"
-            className="mt-2 h-32 w-32 rounded object-cover"
-          />
+          <div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={formData.avatarImageUrl}
+              alt="Avatar Preview"
+              className="mt-2 h-32 w-32 rounded object-cover"
+            />
+            {/* 🔍 DEBUG - Mostrar URL atual */}
+            <p className="text-xs text-gray-500 mt-1 break-all">
+              URL atual: {formData.avatarImageUrl}
+            </p>
+          </div>
         )}
       </div>
 
@@ -149,12 +168,18 @@ export default function SettingsPageClient({ restaurant }: SettingsPageClientPro
           onChange={(e) => handleImageUpload(e, "coverImageUrl")}
         />
         {formData.coverImageUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={formData.coverImageUrl}
-            alt="Cover Preview"
-            className="mt-2 h-40 w-full rounded object-cover"
-          />
+          <div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={formData.coverImageUrl}
+              alt="Cover Preview"
+              className="mt-2 h-40 w-full rounded object-cover"
+            />
+            {/* 🔍 DEBUG - Mostrar URL atual */}
+            <p className="text-xs text-gray-500 mt-1 break-all">
+              URL atual: {formData.coverImageUrl}
+            </p>
+          </div>
         )}
       </div>
 

@@ -8,6 +8,13 @@ export async function PUT(request: Request) {
   try {
     const body = await request.json();
 
+    // 🔍 DEBUG - LOGS TEMPORÁRIOS
+    console.log('=== DEBUG UPDATE RESTAURANT ===');
+    console.log('Body recebido:', body);
+    console.log('avatarImageUrl:', body.avatarImageUrl);
+    console.log('coverImageUrl:', body.coverImageUrl);
+    console.log('================================');
+
     const cookieStore = await cookies();
     const token = cookieStore.get('auth-token')?.value;
 
@@ -26,6 +33,10 @@ export async function PUT(request: Request) {
         coverImageUrl: body.coverImageUrl,
       },
     });
+
+    // 🔍 DEBUG - LOG DO RESULTADO
+    console.log('Restaurante atualizado:', updatedRestaurant);
+    console.log('Nova avatarImageUrl salva:', updatedRestaurant.avatarImageUrl);
 
     return NextResponse.json(updatedRestaurant);
   } catch (error) {
