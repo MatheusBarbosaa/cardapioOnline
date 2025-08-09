@@ -9,7 +9,7 @@ import {
   ShoppingCart,
   User,
 } from "lucide-react";
-import { cookies } from 'next/headers';
+import { cookies } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -52,7 +52,7 @@ export default async function AdminLayout({
 
   const navigation = [
     { name: "Dashboard", href: `/admin/${slug}`, icon: LayoutDashboard },
-    { name: "Cardápio", href: `/admin/${slug}/menu`, icon: MenuIcon },
+    { name: "Cardápio", href: `/admin/${slug}/cardapio`, icon: MenuIcon }, // <-- Mudança aqui
     { name: "Pedidos", href: `/admin/${slug}/orders`, icon: ShoppingCart },
     { name: "Pagamentos", href: `/admin/${slug}/stripe`, icon: CreditCard },
     { name: "Relatórios", href: `/admin/${slug}/reports`, icon: BarChart3 },

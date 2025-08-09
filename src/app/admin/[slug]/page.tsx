@@ -14,6 +14,7 @@ import Link from 'next/link';
 
 import { db } from '@/lib/prisma';
 
+
 // Tipo para changeType
 type ChangeType = 'positive' | 'negative' | 'neutral';
 

@@ -37,8 +37,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ✅ Gerar token com await
-    const token = await generateToken(user);
+    // ✅ CORREÇÃO: Gerar token com payload correto
+    const token = await generateToken({
+      userId: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      restaurantId: user.restaurantId,
+      restaurantSlug: user.restaurant.slug,
+      restaurantName: user.restaurant.name
+    });
 
     // Atualizar último login
     await db.user.update({
@@ -62,19 +70,19 @@ export async function POST(request: NextRequest) {
       }
     });
 
-    // Definir cookie com token real (não uma Promise)
+    // Definir cookie com token
     response.cookies.set('auth-token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      sameSite: 'lax', // Mudei de 'strict' para 'lax'
       path: '/',
       maxAge: 7 * 24 * 60 * 60 // 7 dias
     });
 
     return response;
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   } catch (error) {
+    console.error('Erro no login:', error);
     return NextResponse.json(
       { error: 'Erro interno do servidor' },
       { status: 500 }

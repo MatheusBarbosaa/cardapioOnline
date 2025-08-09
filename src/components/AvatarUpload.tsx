@@ -16,9 +16,9 @@ export default function AvatarUpload({
 }) {
   const [loading, setLoading] = useState(false);
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+ const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
 
     setLoading(true);
 
@@ -45,7 +45,7 @@ export default function AvatarUpload({
 
   return (
     <div>
-      <input type="file" onChange={handleUpload} />
+      <input type="file" onChange={handleChange} />
       {loading && <p>Enviando imagem...</p>}
       {preview && (
         // eslint-disable-next-line @next/next/no-img-element
