@@ -1,4 +1,6 @@
 // src/app/api/admin/upload/product-image/route.ts
+export const runtime = "nodejs";
+
 import { existsSync } from 'fs';
 import { mkdir,writeFile } from 'fs/promises';
 import { verify } from 'jsonwebtoken';
