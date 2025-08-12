@@ -15,4 +15,5 @@ if (process.env.NODE_ENV === "production") {
   prismaInstance = global.cachedPrisma;
 }
 
-export const prisma = prismaInstance; // 🔹 agora exporta como prisma
+// 🔹 Exporta como prisma (não mais db)
+export const prisma = prismaInstance;
