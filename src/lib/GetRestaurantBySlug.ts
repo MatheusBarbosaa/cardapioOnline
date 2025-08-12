@@ -1,12 +1,12 @@
 // src/lib/getRestaurantBySlug.ts
 import { db } from '@/lib/prisma';
 
-export async function getRestaurantBySlug(slug: string) {
+export async function GetRestaurantBySlug(slug: string) {
   try {
     const restaurant = await db.restaurant.findUnique({
       where: { slug },
       include: {
-        categories: {
+        menuCategories: {
           include: {
             products: true
           }

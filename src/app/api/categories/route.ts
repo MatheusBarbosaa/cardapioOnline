@@ -2,7 +2,7 @@ import { cookies } from 'next/headers';
 import { NextResponse } from "next/server"
 
 import { verifyToken } from "@/lib/auth"
-import { getRestaurantBySlug } from "@/lib/GetRestaurantBySlug"
+import { GetRestaurantBySlug } from "@/lib/GetRestaurantBySlug"
 import { db } from "@/lib/prisma"
 
 export async function POST(req: Request) {
@@ -29,7 +29,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Nome e slug são obrigatórios" }, { status: 400 })
     }
 
-    const restaurant = await getRestaurantBySlug(slug)
+    const restaurant = await GetRestaurantBySlug(slug)
     if (!restaurant) {
       return NextResponse.json({ error: "Restaurante não encontrado" }, { status: 404 })
     }
