@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // src/app/api/admin/products/update/route.ts
 import { verify } from 'jsonwebtoken';
 import { cookies } from 'next/headers';

@@ -3,12 +3,8 @@
     "development"
   ],
   "hints": {
-    "axe/forms": [
-      "default",
-      {
-        "label": "off"
-      }
-    ],
-    "axe/text-alternatives": "off"
+    "axe/forms": "off",
+    "axe/text-alternatives": "off",
+    "axe/name-role-value": "off"
   }
 }

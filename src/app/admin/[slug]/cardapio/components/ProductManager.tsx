@@ -123,21 +123,58 @@ export default function ProductManager({
     }
 
     try {
+      // ✅ Função para pegar o token (tanto do localStorage quanto dos cookies)
+      const getAuthToken = () => {
+        // Tentar pegar do localStorage primeiro
+        const token = localStorage.getItem('token');
+        if (token) {
+          return `Bearer ${token}`;
+        }
+        
+        // Tentar pegar dos cookies
+        const cookies = document.cookie.split(';');
+        for (let cookie of cookies) {
+          const [name, value] = cookie.trim().split('=');
+          if (name === 'token') {
+            return `Bearer ${value}`;
+          }
+        }
+        
+        return null;
+      };
+
+      const authToken = getAuthToken();
+      
+      console.log('🗑️ Deletando produto:', productId);
+      console.log('🔑 Token disponível:', !!authToken);
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+
+      // ✅ Adicionar token se disponível
+      if (authToken) {
+        headers['Authorization'] = authToken;
+      }
+
       const response = await fetch('/api/admin/products/delete', {
         method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify({ productId }),
       });
 
+      console.log('📤 Resposta da API:', response.status, response.statusText);
+
       if (response.ok) {
+        console.log('✅ Produto deletado com sucesso');
         onRefresh();
       } else {
-        alert('Erro ao excluir produto');
+        const errorData = await response.json().catch(() => ({ error: 'Erro desconhecido' }));
+        console.error('❌ Erro da API:', errorData);
+        alert(`Erro ao excluir produto: ${errorData.error || 'Erro desconhecido'}`);
       }
     } catch (error) {
-      console.error('Erro:', error);
+      console.error('❌ Erro:', error);
       alert('Erro ao excluir produto');
     }
   };

@@ -1,19 +1,19 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// src/app/api/admin/categories/toggle/route.ts
+// src/app/api/admin/categories/delete/route.ts
 import { verify } from 'jsonwebtoken';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 
 import { db } from '@/lib/prisma';
 
-export async function PUT(request: Request) {
+export async function DELETE(request: Request) {
   try {
     const body = await request.json();
-    const { categoryId, isActive } = body;
+    const { categoryId } = body;
 
-    if (!categoryId || typeof isActive !== 'boolean') {
+    if (!categoryId) {
       return NextResponse.json(
-        { error: 'ID da categoria e status são obrigatórios' },
+        { error: 'ID da categoria é obrigatório' },
         { status: 400 }
       );
     }
@@ -29,7 +29,10 @@ export async function PUT(request: Request) {
 
     const category = await db.menuCategory.findUnique({
       where: { id: categoryId },
-      include: { restaurant: true }
+      include: { 
+        restaurant: true,
+        _count: { select: { products: true } }
+      }
     });
 
     if (!category || category.restaurant.id !== decoded.restaurantId) {
@@ -39,25 +42,16 @@ export async function PUT(request: Request) {
       );
     }
 
-    const updatedCategory = await db.menuCategory.update({
-      where: { id: categoryId },
-      data: { isActive }
+    await db.menuCategory.delete({
+      where: { id: categoryId }
     });
 
-    if (!isActive) {
-      await db.product.updateMany({
-        where: { menuCategoryId: categoryId },
-        data: { isActive: false }
-      });
-    }
-
     return NextResponse.json({
-      message: `Categoria ${isActive ? 'ativada' : 'desativada'} com sucesso`,
-      category: updatedCategory
+      message: `Categoria excluída com sucesso. ${category._count.products} produto(s) também foram removidos.`
     });
 
   } catch (error) {
-    console.error('Erro ao alterar status da categoria:', error);
+    console.error('Erro ao excluir categoria:', error);
     return NextResponse.json(
       { error: 'Erro interno do servidor' },
       { status: 500 }

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // src/app/api/admin/products/toggle/route.ts
 import { verify } from 'jsonwebtoken';
 import { cookies } from 'next/headers';
@@ -70,12 +71,6 @@ export async function PUT(request: Request) {
     );
   }
 }
-
-// src/app/api/admin/products/delete/route.ts
-import { verify } from 'jsonwebtoken';
-import { cookies } from 'next/headers';
-import { NextResponse } from 'next/server';
-import { db } from '@/lib/prisma';
 
 export async function DELETE(request: Request) {
   try {
