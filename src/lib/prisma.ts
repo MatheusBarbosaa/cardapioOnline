@@ -4,15 +4,15 @@ declare global {
   var cachedPrisma: PrismaClient;
 }
 
-let prisma: PrismaClient;
+let prismaInstance: PrismaClient;
+
 if (process.env.NODE_ENV === "production") {
-  prisma = new PrismaClient();
+  prismaInstance = new PrismaClient();
 } else {
   if (!global.cachedPrisma) {
     global.cachedPrisma = new PrismaClient();
   }
-  prisma = global.cachedPrisma;
+  prismaInstance = global.cachedPrisma;
 }
 
-// vou usar para chamar meu banco de dados
-export const db = prisma;
+export const prisma = prismaInstance; // 🔹 agora exporta como prisma
