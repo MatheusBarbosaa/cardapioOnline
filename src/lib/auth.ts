@@ -5,10 +5,9 @@ import { compare, hash } from 'bcryptjs';
 import type { JWTPayload as JoseJWTPayload } from 'jose';
 import { jwtVerify, SignJWT } from 'jose';
 
-// Segredo JWT
+// Segredo JWT (encoded para jose)
 const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET!);
 
-// Interface do payload do token
 export interface JWTPayload extends JoseJWTPayload {
   userId: string;
   email: string;
@@ -19,7 +18,6 @@ export interface JWTPayload extends JoseJWTPayload {
   restaurantName: string;
 }
 
-// Gera token JWT
 export async function generateToken(
   input: User & { restaurant: { slug: string; name: string } } | Omit<JWTPayload, 'iat' | 'exp'>
 ): Promise<string> {
@@ -38,7 +36,7 @@ export async function generateToken(
       role: user.role,
       restaurantId: user.restaurantId,
       restaurantSlug: user.restaurant.slug,
-      restaurantName: user.restaurant.name
+      restaurantName: user.restaurant.name,
     };
   } else {
     payload = input as Omit<JWTPayload, 'iat' | 'exp'>;
@@ -51,7 +49,6 @@ export async function generateToken(
     .sign(JWT_SECRET);
 }
 
-// Verifica token
 export async function verifyToken(token: string): Promise<JWTPayload | null> {
   try {
     if (!process.env.JWT_SECRET) throw new Error("JWT_SECRET não está definido");
@@ -67,44 +64,50 @@ export async function verifyToken(token: string): Promise<JWTPayload | null> {
     }
 
     return payload as JWTPayload;
-  } catch {
+  } catch (error) {
+    if (process.env.NODE_ENV === 'development') {
+      console.error("Erro ao verificar token JWT:", error);
+    }
     return null;
   }
 }
 
-// Valida estrutura do payload
 export function isValidJWTPayload(obj: unknown): obj is JWTPayload {
   if (typeof obj !== 'object' || obj === null) return false;
 
   const payload = obj as Record<string, unknown>;
 
-  return typeof payload.userId === 'string' &&
-         typeof payload.email === 'string' &&
-         typeof payload.name === 'string' &&
-         typeof payload.role === 'string' &&
-         typeof payload.restaurantId === 'string' &&
-         typeof payload.restaurantSlug === 'string' &&
-         typeof payload.restaurantName === 'string';
+  return (
+    typeof payload.userId === 'string' &&
+    typeof payload.email === 'string' &&
+    typeof payload.name === 'string' &&
+    typeof payload.role === 'string' &&
+    typeof payload.restaurantId === 'string' &&
+    typeof payload.restaurantSlug === 'string' &&
+    typeof payload.restaurantName === 'string'
+  );
 }
 
-// Compara senha
-export async function comparePassword(plainPassword: string, hashedPassword: string): Promise<boolean> {
+export async function comparePassword(
+  plainPassword: string,
+  hashedPassword: string
+): Promise<boolean> {
   return compare(plainPassword, hashedPassword);
 }
 
-// Gera hash de senha
 export async function hashPassword(password: string): Promise<string> {
   return await hash(password, 10);
 }
 
-// Extrai slug do token sem validar
 export function getSlugFromToken(request: Request): string | null {
   try {
     const token = request.headers.get('authorization')?.replace('Bearer ', '');
     if (!token) return null;
 
-    const decoded = JSON.parse(atob(token.split('.')[1])) as { restaurantSlug?: string };
-    return decoded.restaurantSlug ?? null;
+    const payloadBase64 = token.split('.')[1];
+    const decodedPayload = JSON.parse(Buffer.from(payloadBase64, 'base64').toString('utf-8'));
+
+    return decodedPayload.restaurantSlug ?? null;
   } catch {
     return null;
   }
