@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import prisma from "@/lib/prisma";
+import { prisma } from "@/lib/prisma"; // Mudança aqui: import nomeado ao invés de default
 
 export async function GET(
   req: Request,
@@ -16,13 +16,13 @@ export async function GET(
         id: true,
         name: true,
         slug: true,
-        MenuCategory: {
-          orderBy: { createdAt: "asc" }, // Mantém ordem de criação
+        menuCategories: { // Corrigido: deve ser menuCategories (minúsculo)
+          orderBy: { createdAt: "asc" },
           select: {
             id: true,
             name: true,
             description: true,
-            Product: {
+            products: { // Corrigido: deve ser products (minúsculo)
               orderBy: { createdAt: "asc" },
               select: {
                 id: true,
@@ -49,7 +49,7 @@ export async function GET(
         id: restaurant.id,
         name: restaurant.name,
         slug: restaurant.slug,
-        categories: restaurant.MenuCategory
+        categories: restaurant.menuCategories
       }
     });
   } catch (error) {
