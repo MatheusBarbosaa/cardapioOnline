@@ -23,7 +23,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json()
-    const { name, description, imageUrl, slug } = body
+    const { name, description, slug } = body
 
     if (!name || !slug) {
       return NextResponse.json({ error: "Nome e slug são obrigatórios" }, { status: 400 })
@@ -55,7 +55,7 @@ export async function POST(req: Request) {
       data: {
         name: name.trim(),
         description: description?.trim() || null,
-        image: imageUrl || null,
+        //image: imageUrl || null,
         restaurantId: restaurant.id,
       },
     })
