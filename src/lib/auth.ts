@@ -1,3 +1,5 @@
+export const runtime = "nodejs";
+
 import { User } from '@prisma/client';
 import { compare, hash } from 'bcryptjs';
 import type { JWTPayload as JoseJWTPayload } from 'jose';
