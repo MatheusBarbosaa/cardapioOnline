@@ -1,4 +1,5 @@
 // src/app/api/restaurant/update/route.ts
+export const runtime = "nodejs";
 
 import { verify } from 'jsonwebtoken';
 import { cookies } from 'next/headers';
