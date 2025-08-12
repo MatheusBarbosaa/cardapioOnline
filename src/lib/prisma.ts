@@ -1,21 +1,13 @@
 import { PrismaClient } from "@prisma/client";
 
 declare global {
-  // Evita criar múltiplas instâncias no hot reload do Next.js dev
+  // Evita múltiplas instâncias do PrismaClient no ambiente de desenvolvimento
   // @ts-ignore
-  var cachedPrisma: PrismaClient;
+  var prisma: PrismaClient | undefined;
 }
 
-let prismaInstance: PrismaClient;
+export const prisma = global.prisma ?? new PrismaClient();
 
-if (process.env.NODE_ENV === "production") {
-  prismaInstance = new PrismaClient();
-} else {
-  if (!global.cachedPrisma) {
-    global.cachedPrisma = new PrismaClient();
-  }
-  prismaInstance = global.cachedPrisma;
+if (process.env.NODE_ENV !== "production") {
+  global.prisma = prisma;
 }
-
-// Exporta named export prisma
-export const prisma = prismaInstance;
