@@ -108,9 +108,10 @@ export function getSlugFromToken(request: Request): string | null {
   }
 }
 
-// 🔹 Função adicionada para evitar erro de import
-export async function verifyAuthServer(req: Request) {
-  const token = req.headers.get('authorization');
+export async function verifyAuthServer(token?: string | null) {
   if (!token) return null;
+  if (token.startsWith('Bearer ')) {
+    token = token.slice(7);
+  }
   return await verifyToken(token);
 }
