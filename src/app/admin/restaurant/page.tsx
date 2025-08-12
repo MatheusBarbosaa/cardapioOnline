@@ -1,73 +1,71 @@
-// src/app/admin/restaurant/page.tsx
-import { PrismaClient } from "@prisma/client";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import RestaurantAdminPanel from "@/components/admin/restaurant-admin-panel";
-import { verifyAuthServer } from "@/lib/auth"; // Função para verificar auth no servidor
-
-const prisma = new PrismaClient();
+import { verifyAuthServer } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 
 export default async function AdminRestaurantPage() {
-  // Verificar autenticação
-  const user = await verifyAuthServer();
-  
+  const cookieStore = cookies();
+  const token = cookieStore.get('auth-token')?.value;
+
+  const user = await verifyAuthServer(token);
+
   if (!user) {
     redirect("/login");
   }
 
-  // Buscar o restaurante do usuário com todos os dados necessários
   const restaurant = await prisma.restaurant.findFirst({
     where: {
       users: {
         some: {
-          id: user.userId
-        }
-      }
+          id: user.userId,
+        },
+      },
     },
     include: {
       menuCategories: {
         include: {
-          products: true
+          products: true,
         },
         orderBy: {
-          createdAt: "asc"
-        }
+          createdAt: "asc",
+        },
       },
       products: {
         include: {
-          menuCategory: true
+          menuCategory: true,
         },
         orderBy: {
-          createdAt: "desc"
-        }
+          createdAt: "desc",
+        },
       },
       orders: {
         include: {
           orderProducts: {
             include: {
-              product: true
-            }
-          }
+              product: true,
+            },
+          },
         },
         orderBy: {
-          createdAt: "desc"
-        }
+          createdAt: "desc",
+        },
       },
       users: {
         orderBy: {
-          createdAt: "asc"
-        }
-      }
-    }
+          createdAt: "asc",
+        },
+      },
+    },
   });
 
   if (!restaurant) {
-    // Redirecionar para criar restaurante se não existir
     redirect("/admin/restaurant/create");
   }
 
   return (
-    <RestaurantAdminPanel 
+    <RestaurantAdminPanel
       restaurant={restaurant}
       currentUser={user}
     />
