@@ -1,3 +1,4 @@
+/* eslint-disable prefer-const */
 // src/app/admin/[slug]/cardapio/components/ProductManager.tsx
 'use client';
 

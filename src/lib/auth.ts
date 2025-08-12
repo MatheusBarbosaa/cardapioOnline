@@ -78,7 +78,9 @@ export async function verifyToken(token: string): Promise<JWTPayload | null> {
     console.log('✅ VerifyToken - Valid payload');
     return payload as JWTPayload;
   } catch (error) {
-    console.error("❌ VerifyToken - Error:", error.message);
+    // ✅ CORREÇÃO: Tratar error como unknown corretamente
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error("❌ VerifyToken - Error:", errorMessage);
     return null;
   }
 }

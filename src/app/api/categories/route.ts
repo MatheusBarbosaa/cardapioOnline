@@ -1,38 +1,71 @@
+import { cookies } from 'next/headers';
 import { NextResponse } from "next/server"
 
-import { auth } from "@/lib/auth"
-import { getRestaurantBySlug } from "@/lib/getRestaurantBySlug"
-import { prisma } from "@/lib/prisma"
+import { verifyToken } from "@/lib/auth"
+import { getRestaurantBySlug } from "@/lib/GetRestaurantBySlug"
+import { db } from "@/lib/prisma"
 
 export async function POST(req: Request) {
   try {
-    const user = await auth()
-    if (!user) return new NextResponse("Unauthorized", { status: 401 })
+    // Verificar autenticação usando o sistema de auth que você já tem
+    const cookieStore = await cookies();
+    const token = cookieStore.get('auth-token')?.value;
+
+    if (!token) {
+      return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
+    }
+
+    // Usar o verifyToken do seu arquivo auth.ts
+    const decoded = await verifyToken(token);
+    
+    if (!decoded) {
+      return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
+    }
 
     const body = await req.json()
     const { name, description, imageUrl, slug } = body
 
     if (!name || !slug) {
-      return new NextResponse("Missing required fields", { status: 400 })
+      return NextResponse.json({ error: "Nome e slug são obrigatórios" }, { status: 400 })
     }
 
     const restaurant = await getRestaurantBySlug(slug)
     if (!restaurant) {
-      return new NextResponse("Restaurant not found", { status: 404 })
+      return NextResponse.json({ error: "Restaurante não encontrado" }, { status: 404 })
     }
 
-    const category = await prisma.menuCategory.create({
+    // Verificar se o restaurante pertence ao usuário
+    if (restaurant.id !== decoded.restaurantId) {
+      return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
+    }
+
+    // Verificar se já existe categoria com esse nome
+    const existingCategory = await db.menuCategory.findFirst({
+      where: {
+        restaurantId: restaurant.id,
+        name: name.trim()
+      }
+    });
+
+    if (existingCategory) {
+      return NextResponse.json({ error: 'Já existe uma categoria com este nome' }, { status: 400 });
+    }
+
+    const category = await db.menuCategory.create({
       data: {
-        name,
-        description,
-        image: imageUrl,
+        name: name.trim(),
+        description: description?.trim() || null,
+        image: imageUrl || null,
         restaurantId: restaurant.id,
       },
     })
 
-    return NextResponse.json(category)
+    return NextResponse.json({
+      message: 'Categoria criada com sucesso',
+      category
+    })
   } catch (error) {
-    console.error(error)
-    return new NextResponse("Server error", { status: 500 })
+    console.error('Erro ao criar categoria:', error)
+    return NextResponse.json({ error: "Erro interno do servidor" }, { status: 500 })
   }
 }

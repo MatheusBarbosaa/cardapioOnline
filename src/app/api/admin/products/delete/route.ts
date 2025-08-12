@@ -81,8 +81,8 @@ export async function DELETE(request: NextRequest) {
   } catch (error) {
     console.error('❌ Erro ao deletar produto:', error);
     
-    // ✅ Tratar erros específicos do Prisma
-    if (error.code === 'P2003') {
+    // ✅ Tratar erros específicos do Prisma - sem usar any
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'P2003') {
       return NextResponse.json(
         { error: 'Não é possível deletar este produto pois ele possui dependências vinculadas' },
         { status: 400 }
@@ -97,6 +97,7 @@ export async function DELETE(request: NextRequest) {
 }
 
 // ✅ Função separada para processar o delete
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function processDelete(request: NextRequest, payload: any) {
   // ✅ Pegar dados do corpo da requisição
   const body = await request.json();
