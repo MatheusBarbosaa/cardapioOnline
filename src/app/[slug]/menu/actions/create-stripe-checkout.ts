@@ -17,8 +17,14 @@ interface CreateStripeCheckoutInput {
   cpf: string;
 }
 
-// ✅ Função para converter URLs relativas em absolutas
-const getAbsoluteImageUrl = (imageUrl: string, origin: string): string => {
+// ✅ CORREÇÃO: Função para converter URLs relativas em absolutas (aceita null/undefined)
+const getAbsoluteImageUrl = (imageUrl: string | null | undefined, origin: string): string => {
+  // ✅ CORREÇÃO: Verificar se imageUrl existe
+  if (!imageUrl) {
+    // Retorna uma imagem padrão ou string vazia se imageUrl for null/undefined
+    return `${origin}/default-product-image.png`;
+  }
+  
   // Se já é uma URL absoluta (http/https), retorna como está
   if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
     return imageUrl;
@@ -96,8 +102,8 @@ export const createStripeCheckout = async ({
         throw new Error(`Produto com ID ${product.id} não encontrado no banco.`);
       }
 
-      // ✅ CORREÇÃO: Converter URL relativa em absoluta para o Stripe
-      const absoluteImageUrl = getAbsoluteImageUrl(product.imageUrl, origin);
+      // ✅ CORREÇÃO: Lidar com imageUrl que pode ser null
+      const absoluteImageUrl = product.imageUrl ? getAbsoluteImageUrl(product.imageUrl, origin) : null;
       
       // ✅ Log para debug
       console.log(`🖼️ Imagem para produto ${product.name}:`);
@@ -109,7 +115,7 @@ export const createStripeCheckout = async ({
           currency: "brl",
           product_data: {
             name: product.name,
-            // ✅ CORREÇÃO: Usar URL absoluta e validar se existe
+            // ✅ CORREÇÃO: Só adicionar imagem se ela existir
             images: absoluteImageUrl ? [absoluteImageUrl] : [],
           },
           unit_amount: Math.round(dbProduct.price * 100),

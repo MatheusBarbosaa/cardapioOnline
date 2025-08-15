@@ -6,9 +6,8 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  experimental: {
-    serverComponentsExternalPackages: ['bcryptjs'],
-  },
+  // ✅ CORREÇÃO: Mudou para serverExternalPackages (fora do experimental)
+  serverExternalPackages: ['bcryptjs'],
   images: {
     remotePatterns: [
       {
