@@ -2,27 +2,27 @@
 import { createClient } from "@supabase/supabase-js";
 import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
-
-import { verifyToken } from "@/lib/auth"; // sua função JWT
-
-// ✅ Variáveis obrigatórias
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-  throw new Error(
-    "As variáveis SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY precisam estar definidas"
-  );
-}
-
-// Inicializa Supabase (server-side)
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+import { verifyToken } from "@/lib/auth";
 
 export async function POST(req: NextRequest) {
   try {
+    // ✅ Mover verificação das variáveis para dentro da função
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+      console.error("Variáveis de ambiente não configuradas");
+      return NextResponse.json(
+        { error: "Configuração do servidor incompleta" }, 
+        { status: 500 }
+      );
+    }
+
+    // ✅ Inicializar Supabase dentro da função
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
     // 1️⃣ Obter token do cookie
     const token = req.cookies.get("auth-token")?.value;
-
     if (!token) {
       return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
     }
@@ -36,7 +36,6 @@ export async function POST(req: NextRequest) {
     // 3️⃣ Ler arquivo enviado
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
-
     if (!file) {
       return NextResponse.json({ error: "Nenhum arquivo enviado" }, { status: 400 });
     }
