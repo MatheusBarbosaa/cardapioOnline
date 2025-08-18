@@ -1,6 +1,4 @@
-"use client";
-
-import { useCallback, useEffect, useRef,useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export default function OrdersManager({ initialOrders, slug }) {
   const [orders, setOrders] = useState(initialOrders);
@@ -9,6 +7,9 @@ export default function OrdersManager({ initialOrders, slug }) {
   const [lastUpdate, setLastUpdate] = useState(new Date());
   const [isVisible, setIsVisible] = useState(true);
   const [retryCount, setRetryCount] = useState(0);
+  const [selectedFilter, setSelectedFilter] = useState('all');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [soundEnabled, setSoundEnabled] = useState(true);
   
   // Refs para controle de memória
   const intervalRef = useRef(null);
@@ -18,24 +19,32 @@ export default function OrdersManager({ initialOrders, slug }) {
   const statusLabels = {
     PAYMENT_CONFIRMED: "Pagamento Confirmado",
     IN_PREPARATION: "Em Preparo", 
-    FINISHED: "Pronto",
-    PENDING: "Pendente",
+    FINISHED: "Pronto para Retirada",
+    PENDING: "Aguardando Pagamento",
     PAYMENT_FAILED: "Pagamento Falhou",
   };
 
   const statusColors = {
-    PAYMENT_CONFIRMED: "bg-blue-100 text-blue-800 border-blue-200",
-    IN_PREPARATION: "bg-yellow-100 text-yellow-800 border-yellow-200", 
-    FINISHED: "bg-green-100 text-green-800 border-green-200",
-    PENDING: "bg-gray-100 text-gray-800 border-gray-200",
-    PAYMENT_FAILED: "bg-red-100 text-red-800 border-red-200",
+    PAYMENT_CONFIRMED: "bg-blue-100 text-blue-800 border-blue-300",
+    IN_PREPARATION: "bg-amber-100 text-amber-800 border-amber-300", 
+    FINISHED: "bg-green-100 text-green-800 border-green-300",
+    PENDING: "bg-gray-100 text-gray-800 border-gray-300",
+    PAYMENT_FAILED: "bg-red-100 text-red-800 border-red-300",
   };
 
-  // Função otimizada para buscar apenas mudanças
+  const statusIcons = {
+    PAYMENT_CONFIRMED: "💳",
+    IN_PREPARATION: "👨‍🍳",
+    FINISHED: "✅",
+    PENDING: "⏳",
+    PAYMENT_FAILED: "❌",
+  };
+
+  // Função corrigida para mesclar pedidos em vez de substituir
   const fetchOrders = useCallback(async (forceRefresh = false) => {
     // Evita requests duplicadas muito próximas
     const now = Date.now();
-    if (!forceRefresh && now - lastFetchTime.current < 1500) {
+    if (!forceRefresh && now - lastFetchTime.current < 2000) {
       return;
     }
     lastFetchTime.current = now;
@@ -49,10 +58,9 @@ export default function OrdersManager({ initialOrders, slug }) {
     try {
       setIsRefreshing(true);
       
-      // Busca apenas pedidos modificados recentemente (últimos 10 minutos)
-      const since = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+      // ✅ CORREÇÃO: Remove o filtro "since" para buscar TODOS os pedidos
       const res = await fetch(
-        `/api/admin/orders/list?slug=${slug}&since=${since}&hash=${Date.now()}`,
+        `/api/admin/orders/list?slug=${slug}&hash=${Date.now()}`,
         { 
           signal: abortControllerRef.current.signal,
           headers: { 'Cache-Control': 'no-cache' }
@@ -64,21 +72,60 @@ export default function OrdersManager({ initialOrders, slug }) {
       const data = await res.json();
       
       if (data.orders) {
-        // Só atualiza se realmente houver mudanças
-        const newOrdersJson = JSON.stringify(data.orders);
-        const currentOrdersJson = JSON.stringify(orders);
-        
-        if (newOrdersJson !== currentOrdersJson) {
-          setOrders(data.orders);
-          setLastUpdate(new Date());
+        // ✅ CORREÇÃO: Compara e mescla pedidos inteligentemente
+        setOrders(currentOrders => {
+          const newOrders = data.orders;
           
-          // Som de notificação apenas para novos pedidos importantes
-          if (data.orders.some(o => o.status === 'PAYMENT_CONFIRMED')) {
-            playNotificationSound();
+          // Se forceRefresh, substitui completamente
+          if (forceRefresh) {
+            return newOrders;
           }
-        }
+          
+          // Cria um Map para busca rápida dos pedidos atuais
+          const currentOrdersMap = new Map(
+            currentOrders.map(order => [order.id, order])
+          );
+          
+          // Mescla pedidos: atualiza existentes e adiciona novos
+          const mergedOrders = newOrders.map(newOrder => {
+            const currentOrder = currentOrdersMap.get(newOrder.id);
+            
+            // Se o pedido já existe, verifica se foi atualizado
+            if (currentOrder) {
+              const currentUpdated = new Date(currentOrder.updatedAt || currentOrder.createdAt).getTime();
+              const newUpdated = new Date(newOrder.updatedAt || newOrder.createdAt).getTime();
+              
+              // Retorna o mais recente
+              return newUpdated > currentUpdated ? newOrder : currentOrder;
+            }
+            
+            // Pedido novo, adiciona à lista
+            return newOrder;
+          });
+          
+          // Verifica se houve mudanças reais
+          const hasChanges = JSON.stringify(mergedOrders) !== JSON.stringify(currentOrders);
+          
+          if (hasChanges) {
+            setLastUpdate(new Date());
+            
+            // Som de notificação apenas para pedidos realmente novos
+            const currentOrderIds = new Set(currentOrders.map(o => o.id));
+            const hasNewPaidOrders = newOrders.some(o => 
+              !currentOrderIds.has(o.id) && o.status === 'PAYMENT_CONFIRMED'
+            );
+            
+            if (hasNewPaidOrders && soundEnabled) {
+              playNotificationSound();
+            }
+            
+            return mergedOrders;
+          }
+          
+          return currentOrders; // Sem mudanças, mantém o estado atual
+        });
         
-        setRetryCount(0); // Reset retry count on success
+        setRetryCount(0);
       }
     } catch (error) {
       if (error.name !== 'AbortError') {
@@ -88,18 +135,32 @@ export default function OrdersManager({ initialOrders, slug }) {
     } finally {
       setIsRefreshing(false);
     }
-  }, [slug, orders]);
+  }, [slug, soundEnabled]);
 
   // Som de notificação
   const playNotificationSound = useCallback(() => {
+    if (!soundEnabled) return;
     try {
-      const audio = new Audio('/notification.mp3'); // Adicione um arquivo de som
-      audio.volume = 0.3;
-      audio.play().catch(() => {}); // Ignore se não conseguir tocar
+      // Cria um beep usando Web Audio API
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      oscillator.frequency.value = 800;
+      oscillator.type = 'sine';
+      gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+      gainNode.gain.linearRampToValueAtTime(0.2, audioContext.currentTime + 0.01);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.5);
+      
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.5);
     } catch (error) {
-      // Ignore errors
+      console.log('Áudio não suportado');
     }
-  }, []);
+  }, [soundEnabled]);
 
   async function updateStatus(orderId, newStatus) {
     setUpdatingOrders(prev => new Set(prev).add(orderId));
@@ -108,7 +169,7 @@ export default function OrdersManager({ initialOrders, slug }) {
     setOrders(prevOrders => 
       prevOrders.map(order => 
         order.id === orderId 
-          ? { ...order, status: newStatus, updatedAt: new Date() }
+          ? { ...order, status: newStatus, updatedAt: new Date().toISOString() }
           : order
       )
     );
@@ -122,13 +183,13 @@ export default function OrdersManager({ initialOrders, slug }) {
 
       if (!response.ok) throw new Error("Erro ao atualizar status");
 
-      // Força uma atualização imediata após mudança
+      // Força uma atualização após mudança
       setTimeout(() => fetchOrders(true), 500);
 
     } catch (error) {
       console.error("Erro ao atualizar status:", error);
       alert("Erro ao atualizar status. Tente novamente.");
-      await fetchOrders(true); // Reverte mudança otimista
+      await fetchOrders(true);
     } finally {
       setUpdatingOrders(prev => {
         const newSet = new Set(prev);
@@ -145,7 +206,6 @@ export default function OrdersManager({ initialOrders, slug }) {
       setIsVisible(visible);
       
       if (visible) {
-        // Quando volta a ser visível, busca atualizações
         fetchOrders(true);
       }
     };
@@ -154,7 +214,7 @@ export default function OrdersManager({ initialOrders, slug }) {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [fetchOrders]);
 
-  // Polling inteligente baseado na atividade
+  // Polling inteligente
   useEffect(() => {
     const clearCurrentInterval = () => {
       if (intervalRef.current) {
@@ -164,13 +224,12 @@ export default function OrdersManager({ initialOrders, slug }) {
     };
 
     if (isVisible) {
-      // Intervalo adaptativo baseado em retry count e tipos de pedidos
       const hasActivePedidos = orders.some(o => 
         o.status === 'PAYMENT_CONFIRMED' || o.status === 'IN_PREPARATION'
       );
       
-      let interval = hasActivePedidos ? 3000 : 8000; // 3s para ativos, 8s para inativos
-      interval = interval * Math.min(retryCount + 1, 3); // Aumenta intervalo em caso de erro
+      let interval = hasActivePedidos ? 3000 : 8000;
+      interval = interval * Math.min(retryCount + 1, 3);
       
       intervalRef.current = setInterval(() => {
         if (isVisible) {
@@ -184,7 +243,7 @@ export default function OrdersManager({ initialOrders, slug }) {
     return clearCurrentInterval;
   }, [isVisible, fetchOrders, retryCount, orders]);
 
-  // Cleanup on unmount
+  // Cleanup
   useEffect(() => {
     return () => {
       if (abortControllerRef.current) {
@@ -196,11 +255,35 @@ export default function OrdersManager({ initialOrders, slug }) {
     };
   }, []);
 
+  // Filtros e busca
+  const filteredOrders = orders.filter(order => {
+    const matchesFilter = selectedFilter === 'all' || order.status === selectedFilter;
+    const matchesSearch = searchTerm === '' || 
+      order.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      order.customerCpf.includes(searchTerm) ||
+      order.id.toString().includes(searchTerm);
+    return matchesFilter && matchesSearch;
+  });
+
+  // Estatísticas
+  const stats = {
+    total: orders.length,
+    pending: orders.filter(o => o.status === 'PENDING').length,
+    confirmed: orders.filter(o => o.status === 'PAYMENT_CONFIRMED').length,
+    preparing: orders.filter(o => o.status === 'IN_PREPARATION').length,
+    finished: orders.filter(o => o.status === 'FINISHED').length,
+    failed: orders.filter(o => o.status === 'PAYMENT_FAILED').length,
+  };
+
   if (!orders || orders.length === 0) {
     return (
-      <div className="bg-white rounded-lg shadow-sm border p-6">
-        <div className="flex justify-between items-center mb-4">
-          <p className="text-gray-500">Nenhum pedido encontrado</p>
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
+        <div className="text-center">
+          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <span className="text-2xl">📋</span>
+          </div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">Nenhum pedido encontrado</h3>
+          <p className="text-gray-500 mb-4">Os pedidos aparecerão aqui quando chegarem</p>
           <StatusIndicator 
             isRefreshing={isRefreshing} 
             lastUpdate={lastUpdate} 
@@ -212,82 +295,121 @@ export default function OrdersManager({ initialOrders, slug }) {
     );
   }
 
-  // Separar pedidos por prioridade
-  const priorityOrders = orders.filter(o => o.status === 'PAYMENT_CONFIRMED');
-  const activeOrders = orders.filter(o => o.status === 'IN_PREPARATION'); 
-  const completedOrders = orders.filter(o => o.status === 'FINISHED');
-  const otherOrders = orders.filter(o => 
-    !['PAYMENT_CONFIRMED', 'IN_PREPARATION', 'FINISHED'].includes(o.status)
-  );
-
   return (
     <div className="space-y-6">
-      {/* Header com status inteligente */}
-      <div className="bg-white rounded-lg shadow-sm border p-4">
-        <div className="flex justify-between items-center">
+      {/* Header com estatísticas */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
           <div>
-            <h2 className="font-semibold">Pedidos - Sistema Inteligente</h2>
-            <p className="text-sm text-gray-600">
-              Total: {orders.length} | Aguardando: {priorityOrders.length} | Em preparo: {activeOrders.length}
-            </p>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Gerenciador de Pedidos</h2>
+            <div className="grid grid-cols-2 lg:flex gap-4 text-sm">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                <span>Confirmados: <strong>{stats.confirmed}</strong></span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-amber-500 rounded-full"></div>
+                <span>Em Preparo: <strong>{stats.preparing}</strong></span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                <span>Prontos: <strong>{stats.finished}</strong></span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-gray-400 rounded-full"></div>
+                <span>Total: <strong>{stats.total}</strong></span>
+              </div>
+            </div>
           </div>
-          <StatusIndicator 
-            isRefreshing={isRefreshing} 
-            lastUpdate={lastUpdate} 
-            retryCount={retryCount}
-            isVisible={isVisible}
-          />
+          
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setSoundEnabled(!soundEnabled)}
+              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                soundEnabled 
+                  ? 'bg-blue-100 text-blue-700 border border-blue-200' 
+                  : 'bg-gray-100 text-gray-700 border border-gray-200'
+              }`}
+              title={soundEnabled ? 'Som ativado' : 'Som desativado'}
+            >
+              {soundEnabled ? '🔊' : '🔇'}
+            </button>
+            
+            <button
+              onClick={() => fetchOrders(true)}
+              disabled={isRefreshing}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg font-medium transition-all flex items-center gap-2"
+            >
+              <span className={`${isRefreshing ? 'animate-spin' : ''}`}>🔄</span>
+              {isRefreshing ? 'Atualizando...' : 'Atualizar'}
+            </button>
+            
+            <StatusIndicator 
+              isRefreshing={isRefreshing} 
+              lastUpdate={lastUpdate} 
+              retryCount={retryCount}
+              isVisible={isVisible}
+            />
+          </div>
         </div>
       </div>
 
-      {/* Seções organizadas por prioridade */}
-      {priorityOrders.length > 0 && (
-        <OrderSection 
-          title={`🔔 Aguardando Preparo (${priorityOrders.length})`}
-          orders={priorityOrders}
-          updateStatus={updateStatus}
-          updatingOrders={updatingOrders}
-          statusLabels={statusLabels}
-          statusColors={statusColors}
-          priority={true}
-          bgColor="bg-blue-50 border-blue-200"
-        />
-      )}
+      {/* Filtros e Busca */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div className="flex flex-col lg:flex-row gap-4">
+          <div className="flex-1">
+            <input
+              type="text"
+              placeholder="Buscar por nome, CPF ou ID do pedido..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+            />
+          </div>
+          
+          <div className="flex gap-2">
+            {[
+              { key: 'all', label: 'Todos', count: stats.total },
+              { key: 'PAYMENT_CONFIRMED', label: 'Confirmados', count: stats.confirmed },
+              { key: 'IN_PREPARATION', label: 'Em Preparo', count: stats.preparing },
+              { key: 'FINISHED', label: 'Prontos', count: stats.finished },
+            ].map((filter) => (
+              <button
+                key={filter.key}
+                onClick={() => setSelectedFilter(filter.key)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
+                  selectedFilter === filter.key
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                {filter.label} ({filter.count})
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
 
-      {activeOrders.length > 0 && (
-        <OrderSection 
-          title={`🍳 Em Preparo (${activeOrders.length})`}
-          orders={activeOrders}
-          updateStatus={updateStatus}
-          updatingOrders={updatingOrders}
-          statusLabels={statusLabels}
-          statusColors={statusColors}
-          bgColor="bg-yellow-50 border-yellow-200"
-        />
-      )}
-
-      {completedOrders.length > 0 && (
-        <OrderSection 
-          title={`✅ Prontos (${completedOrders.length})`}
-          orders={completedOrders.slice(0, 5)} // Mostra apenas os 5 mais recentes
-          updateStatus={updateStatus}
-          updatingOrders={updatingOrders}
-          statusLabels={statusLabels}
-          statusColors={statusColors}
-          bgColor="bg-green-50 border-green-200"
-        />
-      )}
-
-      {otherOrders.length > 0 && (
-        <OrderSection 
-          title={`📋 Outros (${otherOrders.length})`}
-          orders={otherOrders.slice(0, 3)} // Mostra apenas os 3 mais recentes
-          updateStatus={updateStatus}
-          updatingOrders={updatingOrders}
-          statusLabels={statusLabels}
-          statusColors={statusColors}
-        />
-      )}
+      {/* Lista de Pedidos */}
+      <div className="space-y-4">
+        {filteredOrders.length === 0 ? (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center">
+            <p className="text-gray-500">Nenhum pedido encontrado com os filtros aplicados</p>
+          </div>
+        ) : (
+          filteredOrders.map((order) => (
+            <OrderCard 
+              key={order.id} 
+              order={order} 
+              updateStatus={updateStatus}
+              updatingOrders={updatingOrders}
+              statusLabels={statusLabels}
+              statusColors={statusColors}
+              statusIcons={statusIcons}
+            />
+          ))
+        )}
+      </div>
     </div>
   );
 }
@@ -303,9 +425,9 @@ function StatusIndicator({ isRefreshing, lastUpdate, retryCount, isVisible }) {
 
   const getStatusText = () => {
     if (!isVisible) return 'Aba inativa';
-    if (retryCount > 0) return `Tentativa ${retryCount}/5`;
-    if (isRefreshing) return 'Atualizando...';
-    return `Última: ${lastUpdate.toLocaleTimeString()}`;
+    if (retryCount > 0) return `Erro ${retryCount}/5`;
+    if (isRefreshing) return 'Sincronizando...';
+    return `Última sync: ${lastUpdate.toLocaleTimeString()}`;
   };
 
   return (
@@ -316,53 +438,87 @@ function StatusIndicator({ isRefreshing, lastUpdate, retryCount, isVisible }) {
   );
 }
 
-// Componente para seção de pedidos
-function OrderSection({ title, orders, updateStatus, updatingOrders, statusLabels, statusColors, priority = false, bgColor = "bg-gray-50" }) {
-  return (
-    <div className={`bg-white rounded-lg shadow-sm border p-6 ${bgColor}`}>
-      <h3 className="font-semibold text-lg mb-4">{title}</h3>
-      <div className="space-y-4">
-        {orders.map((order) => (
-          <OrderCard 
-            key={order.id} 
-            order={order} 
-            updateStatus={updateStatus}
-            updatingOrders={updatingOrders}
-            statusLabels={statusLabels}
-            statusColors={statusColors}
-            priority={priority}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
 // Componente otimizado para cada pedido
-function OrderCard({ order, updateStatus, updatingOrders, statusLabels, statusColors, priority = false }) {
+function OrderCard({ order, updateStatus, updatingOrders, statusLabels, statusColors, statusIcons }) {
+  const isPriority = order.status === 'PAYMENT_CONFIRMED';
+  const isUrgent = order.status === 'IN_PREPARATION';
+  const orderTime = new Date(order.createdAt);
+  const now = new Date();
+  const timeDiff = Math.floor((now - orderTime) / (1000 * 60)); // em minutos
+  
+  const getTimeColor = () => {
+    if (timeDiff > 30) return 'text-red-600';
+    if (timeDiff > 15) return 'text-yellow-600';
+    return 'text-gray-600';
+  };
+
+  const cardClasses = `
+    border rounded-xl p-6 transition-all duration-200 hover:shadow-md
+    ${isPriority ? 'bg-blue-50 border-blue-200 shadow-md ring-1 ring-blue-200' : ''}
+    ${isUrgent ? 'bg-amber-50 border-amber-200 shadow-md ring-1 ring-amber-200' : ''}
+    ${!isPriority && !isUrgent ? 'bg-white border-gray-200' : ''}
+  `;
+
   return (
-    <div className={`border rounded-lg p-4 flex flex-col gap-3 transition-all ${priority ? 'bg-blue-50 border-blue-200 shadow-md' : 'bg-gray-50'}`}>
-      <div className="flex justify-between items-start">
-        <div className="flex-1">
-          <p className="font-bold text-lg">{order.customerName}</p>
-          <p className="text-sm text-gray-600">CPF: {order.customerCpf}</p>
-          <p className="text-sm font-semibold">Total: R$ {order.total?.toFixed(2)}</p>
-          <div className="flex items-center gap-2 mt-2">
-            <span className="text-sm font-medium">Status:</span>
-            <span className={`px-3 py-1 rounded-full text-xs font-medium border ${statusColors[order.status] || 'bg-gray-100 text-gray-800 border-gray-200'}`}>
+    <div className={cardClasses}>
+      <div className="flex flex-col lg:flex-row justify-between items-start gap-4">
+        <div className="flex-1 space-y-3">
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="flex items-center gap-3 mb-2">
+                <h3 className="text-xl font-bold text-gray-900">{order.customerName}</h3>
+                <span className="text-lg">{statusIcons[order.status]}</span>
+              </div>
+              <div className="flex flex-wrap gap-4 text-sm text-gray-600">
+                <span>CPF: <strong>{order.customerCpf}</strong></span>
+                <span>ID: <strong>#{order.id}</strong></span>
+                <span className={getTimeColor()}>
+                  <strong>{timeDiff}min atrás</strong>
+                </span>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="text-2xl font-bold text-green-600">R$ {order.total?.toFixed(2)}</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-gray-700">Status:</span>
+            <span className={`px-3 py-1 rounded-full text-sm font-medium border ${statusColors[order.status] || 'bg-gray-100 text-gray-800 border-gray-200'}`}>
               {statusLabels[order.status] || order.status}
             </span>
           </div>
+
+          <div className="bg-gray-50 rounded-lg p-4">
+            <p className="text-sm font-semibold text-gray-700 mb-3">Produtos do Pedido:</p>
+            <div className="space-y-2">
+              {order.orderProducts?.map((op) => (
+                <div key={op.id} className="flex justify-between items-center">
+                  <span className="font-medium">{op.product?.name} x {op.quantity}</span>
+                  <span className="font-bold text-gray-900">R$ {(op.product?.price * op.quantity)?.toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
         
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-3 lg:min-w-[200px]">
           {order.status === "PAYMENT_CONFIRMED" && (
             <button
               onClick={() => updateStatus(order.id, "IN_PREPARATION")}
               disabled={updatingOrders.has(order.id)}
-              className="bg-yellow-500 hover:bg-yellow-600 disabled:bg-yellow-300 text-white px-4 py-2 rounded-lg font-medium transition-all transform hover:scale-105 shadow-md"
+              className="w-full bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white px-4 py-3 rounded-lg font-medium transition-all transform hover:scale-105 shadow-md flex items-center justify-center gap-2"
             >
-              {updatingOrders.has(order.id) ? "⏳ Atualizando..." : "🍳 Iniciar Preparo"}
+              {updatingOrders.has(order.id) ? (
+                <>
+                  <span className="animate-spin">⏳</span>
+                  Processando...
+                </>
+              ) : (
+                <>
+                  🍳 Iniciar Preparo
+                </>
+              )}
             </button>
           )}
           
@@ -370,29 +526,25 @@ function OrderCard({ order, updateStatus, updatingOrders, statusLabels, statusCo
             <button
               onClick={() => updateStatus(order.id, "FINISHED")}
               disabled={updatingOrders.has(order.id)}
-              className="bg-green-500 hover:bg-green-600 disabled:bg-green-300 text-white px-4 py-2 rounded-lg font-medium transition-all transform hover:scale-105 shadow-md"
+              className="w-full bg-green-500 hover:bg-green-600 disabled:bg-green-300 text-white px-4 py-3 rounded-lg font-medium transition-all transform hover:scale-105 shadow-md flex items-center justify-center gap-2"
             >
-              {updatingOrders.has(order.id) ? "⏳ Finalizando..." : "✅ Marcar Pronto"}
+              {updatingOrders.has(order.id) ? (
+                <>
+                  <span className="animate-spin">⏳</span>
+                  Finalizando...
+                </>
+              ) : (
+                <>
+                  ✅ Marcar como Pronto
+                </>
+              )}
             </button>
           )}
+          
+          <div className="text-xs text-gray-500 text-center">
+            {orderTime.toLocaleDateString()} às {orderTime.toLocaleTimeString()}
+          </div>
         </div>
-      </div>
-
-      <div className="border-t pt-3">
-        <p className="text-sm font-semibold text-gray-700 mb-2">Produtos:</p>
-        <div className="space-y-1">
-          {order.orderProducts?.map((op) => (
-            <div key={op.id} className="flex justify-between text-sm">
-              <span>{op.product?.name} x {op.quantity}</span>
-              <span className="text-gray-600">R$ {(op.product?.price * op.quantity)?.toFixed(2)}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-      
-      <div className="text-xs text-gray-500 border-t pt-2 flex justify-between">
-        <span>#{order.id}</span>
-        <span>{new Date(order.createdAt).toLocaleString()}</span>
       </div>
     </div>
   );
