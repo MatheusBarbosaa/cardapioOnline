@@ -12,11 +12,13 @@ export default function OrdersManager({ initialOrders, slug }) {
   const [selectedFilter, setSelectedFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [audioInitialized, setAudioInitialized] = useState(false);
   
   // Refs para controle de memória
   const intervalRef = useRef(null);
   const abortControllerRef = useRef(null);
   const lastFetchTime = useRef(Date.now());
+  const audioContextRef = useRef(null);
 
   const statusLabels = {
     PAYMENT_CONFIRMED: "Pagamento Confirmado",
@@ -41,6 +43,120 @@ export default function OrdersManager({ initialOrders, slug }) {
     PENDING: "⏳",
     PAYMENT_FAILED: "❌",
   };
+
+  // Inicializar o AudioContext apenas uma vez
+  const initializeAudio = useCallback(() => {
+    if (audioInitialized || audioContextRef.current) return;
+    
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) {
+        console.warn('Web Audio API não suportada neste navegador');
+        return;
+      }
+      
+      audioContextRef.current = new AudioContext();
+      setAudioInitialized(true);
+      console.log('Áudio inicializado com sucesso');
+    } catch (error) {
+      console.error('Erro ao inicializar áudio:', error);
+    }
+  }, [audioInitialized]);
+
+  // Função robusta para tocar o som de notificação
+  const playNotificationSound = useCallback(async () => {
+    if (!soundEnabled) return;
+    
+    try {
+      // Inicializar áudio se necessário
+      if (!audioContextRef.current) {
+        initializeAudio();
+      }
+      
+      const audioContext = audioContextRef.current;
+      if (!audioContext) return;
+      
+      // Resumir o contexto se estiver suspenso (exigência do navegador)
+      if (audioContext.state === 'suspended') {
+        await audioContext.resume();
+      }
+      
+      // Criar uma sequência de 3 notas harmoniosas
+      const notes = [
+        { freq: 523.25, time: 0 },    // C5
+        { freq: 659.25, time: 0.15 }, // E5  
+        { freq: 783.99, time: 0.3 }   // G5
+      ];
+      
+      notes.forEach(({ freq, time }) => {
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.frequency.value = freq;
+        oscillator.type = 'sine';
+        
+        const startTime = audioContext.currentTime + time;
+        const duration = 0.2;
+        
+        // Envelope de som mais suave
+        gainNode.gain.setValueAtTime(0, startTime);
+        gainNode.gain.linearRampToValueAtTime(0.15, startTime + 0.02);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+        
+        oscillator.start(startTime);
+        oscillator.stop(startTime + duration);
+      });
+      
+    } catch (error) {
+      console.error('Erro ao tocar som:', error);
+      // Fallback para som mais simples
+      fallbackSimpleBeep();
+    }
+  }, [soundEnabled, initializeAudio]);
+
+  // Fallback para um bip simples se o som completo falhar
+  const fallbackSimpleBeep = useCallback(() => {
+    try {
+      const audioContext = audioContextRef.current;
+      if (!audioContext) return;
+      
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      oscillator.frequency.value = 800;
+      oscillator.type = 'sine';
+      
+      const now = audioContext.currentTime;
+      gainNode.gain.setValueAtTime(0, now);
+      gainNode.gain.linearRampToValueAtTime(0.1, now + 0.01);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+      
+      oscillator.start(now);
+      oscillator.stop(now + 0.3);
+    } catch (error) {
+      console.error('Até o fallback falhou:', error);
+    }
+  }, []);
+
+  // Função para testar o som
+  const testSound = useCallback(async () => {
+    // Garantir que o áudio seja inicializado na primeira interação do usuário
+    if (!audioInitialized) {
+      initializeAudio();
+      // Pequeno delay para dar tempo de inicializar
+      setTimeout(() => {
+        playNotificationSound();
+      }, 100);
+    } else {
+      playNotificationSound();
+    }
+  }, [audioInitialized, initializeAudio, playNotificationSound]);
 
   const fetchOrders = useCallback(async (forceRefresh = false) => {
     const now = Date.now();
@@ -119,35 +235,7 @@ export default function OrdersManager({ initialOrders, slug }) {
     } finally {
       setIsRefreshing(false);
     }
-  }, [slug, soundEnabled]);
-
-  // --- FUNÇÃO DE SOM ATUALIZADA ---
-  const playNotificationSound = useCallback(() => {
-    if (!soundEnabled) return;
-    try {
-      if (!window._audioContext) {
-        window._audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      }
-      const audioContext = window._audioContext;
-
-      const oscillator = audioContext.createOscillator();
-      const gainNode = audioContext.createGain();
-
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-
-      oscillator.frequency.value = 800;
-      oscillator.type = 'sine';
-      gainNode.gain.setValueAtTime(0, audioContext.currentTime);
-      gainNode.gain.linearRampToValueAtTime(0.2, audioContext.currentTime + 0.01);
-      gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.5);
-
-      oscillator.start(audioContext.currentTime);
-      oscillator.stop(audioContext.currentTime + 0.5);
-    } catch (error) {
-      console.log('Áudio não suportado');
-    }
-  }, [soundEnabled]);
+  }, [slug, soundEnabled, playNotificationSound]);
 
   async function updateStatus(orderId, newStatus) {
     setUpdatingOrders(prev => new Set(prev).add(orderId));
@@ -224,6 +312,12 @@ export default function OrdersManager({ initialOrders, slug }) {
     return () => {
       if (abortControllerRef.current) abortControllerRef.current.abort();
       if (intervalRef.current) clearInterval(intervalRef.current);
+      
+      // Limpar recursos de áudio
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        audioContextRef.current.close();
+        audioContextRef.current = null;
+      }
     };
   }, []);
 
@@ -293,17 +387,29 @@ export default function OrdersManager({ initialOrders, slug }) {
           </div>
           
           <div className="flex items-center gap-4">
-            <button
-              onClick={() => setSoundEnabled(!soundEnabled)}
-              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                soundEnabled 
-                  ? 'bg-blue-100 text-blue-700 border border-blue-200' 
-                  : 'bg-gray-100 text-gray-700 border border-gray-200'
-              }`}
-              title={soundEnabled ? 'Som ativado' : 'Som desativado'}
-            >
-              {soundEnabled ? '🔊' : '🔇'}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setSoundEnabled(!soundEnabled)}
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  soundEnabled 
+                    ? 'bg-blue-100 text-blue-700 border border-blue-200' 
+                    : 'bg-gray-100 text-gray-700 border border-gray-200'
+                }`}
+                title={soundEnabled ? 'Som ativado - clique para desativar' : 'Som desativado - clique para ativar'}
+              >
+                {soundEnabled ? '🔊' : '🔇'}
+              </button>
+              
+              {soundEnabled && (
+                <button
+                  onClick={testSound}
+                  className="px-2 py-2 bg-green-100 text-green-700 border border-green-200 rounded-lg text-sm font-medium hover:bg-green-200 transition-colors"
+                  title="Testar som de notificação"
+                >
+                  🎵
+                </button>
+              )}
+            </div>
             
             <button
               onClick={() => fetchOrders(true)}
