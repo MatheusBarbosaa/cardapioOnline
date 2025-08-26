@@ -12,10 +12,9 @@ import {
   Package,
   Settings, 
   ShoppingBag, 
-  TrendingUp,
   Users
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,8 +26,11 @@ import CardapioPageClient from "@/app/admin/[slug]/settings/CardapioPageClient";
 interface RestaurantWithRelations extends Restaurant {
   menuCategories: (MenuCategory & { products: Product[] })[];
   products: (Product & { menuCategory: MenuCategory })[];
-  orders: (Order & { orderProducts: any[] })[];
   users: User[];
+}
+
+interface OrderWithProducts extends Order {
+  orderProducts: { id: string; quantity: number; price: number; product: Product }[];
 }
 
 interface RestaurantAdminPanelProps {
@@ -38,21 +40,38 @@ interface RestaurantAdminPanelProps {
 
 const RestaurantAdminPanel = ({ restaurant, currentUser }: RestaurantAdminPanelProps) => {
   const [activeTab, setActiveTab] = useState("dashboard");
+  const [orders, setOrders] = useState<OrderWithProducts[]>([]);
+  const [loadingOrders, setLoadingOrders] = useState(false);
 
-  // Garantir fallback caso algum dado venha undefined
-  const products = restaurant.products || [];
-  const menuCategories = restaurant.menuCategories || [];
-  const orders = restaurant.orders || [];
-  const users = restaurant.users || [];
-
-  const totalProducts = products.length;
-  const activeProducts = products.filter(p => p.isActive).length;
-  const totalCategories = menuCategories.length;
-  const totalOrders = orders.length;
-  const totalRevenue = orders.reduce((sum, order) => sum + order.total, 0);
+  const totalProducts = restaurant.products.length;
+  const activeProducts = restaurant.products.filter(p => p.isActive).length;
+  const totalCategories = restaurant.menuCategories.length;
 
   const canManageUsers = currentUser.role === "ADMIN";
   const canViewFinancials = ["ADMIN", "MANAGER"].includes(currentUser.role);
+
+  const totalRevenue = orders.reduce((sum, order) => sum + order.total, 0);
+
+  // Buscar pedidos via API usando cookie HttpOnly
+  const fetchOrders = async () => {
+    setLoadingOrders(true);
+    try {
+      const res = await fetch(`/api/orders?restaurantId=${restaurant.id}`, {
+        method: "GET",
+        credentials: "include" // importante: envia o cookie HttpOnly
+      });
+      const data = await res.json();
+      setOrders(data.orders || []);
+    } catch (err) {
+      console.error("Erro ao buscar pedidos:", err);
+    } finally {
+      setLoadingOrders(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "pedidos") fetchOrders();
+  }, [activeTab]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -116,12 +135,12 @@ const RestaurantAdminPanel = ({ restaurant, currentUser }: RestaurantAdminPanelP
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Total de Pedidos</CardTitle>
-                  <ShoppingBag className="h-4 w-4 text-muted-foreground" />
+                  <CardTitle className="text-sm font-medium">Total de Produtos</CardTitle>
+                  <Package className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{totalOrders}</div>
-                  <p className="text-xs text-muted-foreground">Todos os tempos</p>
+                  <div className="text-2xl font-bold">{totalProducts}</div>
+                  <p className="text-xs text-muted-foreground">Incluindo ativos e inativos</p>
                 </CardContent>
               </Card>
 
@@ -169,7 +188,7 @@ const RestaurantAdminPanel = ({ restaurant, currentUser }: RestaurantAdminPanelP
           {/* Cardápio */}
           <TabsContent value="cardapio">
             <CardapioPageClient 
-              categories={menuCategories}
+              categories={restaurant.menuCategories}
               restaurantSlug={restaurant.slug}
             />
           </TabsContent>
@@ -181,7 +200,9 @@ const RestaurantAdminPanel = ({ restaurant, currentUser }: RestaurantAdminPanelP
                 <CardTitle>Gerenciar Pedidos</CardTitle>
               </CardHeader>
               <CardContent>
-                {orders.length === 0 ? (
+                {loadingOrders ? (
+                  <p>Carregando pedidos...</p>
+                ) : orders.length === 0 ? (
                   <div className="text-center py-12 text-muted-foreground">
                     <ShoppingBag className="w-16 h-16 mx-auto mb-4 opacity-50" />
                     <p>Nenhum pedido encontrado</p>
@@ -215,8 +236,9 @@ const RestaurantAdminPanel = ({ restaurant, currentUser }: RestaurantAdminPanelP
                             </p>
                           </div>
                         </div>
+
                         <div className="space-y-2">
-                          {order.orderProducts?.map((op: any) => (
+                          {order.orderProducts?.map(op => (
                             <div key={op.id} className="flex justify-between text-sm">
                               <span>{op.quantity}x {op.product?.name}</span>
                               <span>R$ {(op.quantity * op.price).toFixed(2)}</span>
@@ -240,7 +262,7 @@ const RestaurantAdminPanel = ({ restaurant, currentUser }: RestaurantAdminPanelP
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {users.map(user => (
+                    {restaurant.users.map(user => (
                       <div key={user.id} className="flex justify-between items-center p-4 border rounded-lg">
                         <div>
                           <p className="font-medium">{user.name}</p>
@@ -271,60 +293,17 @@ const RestaurantAdminPanel = ({ restaurant, currentUser }: RestaurantAdminPanelP
               <CardHeader>
                 <CardTitle>Configurações do Restaurante</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <h3 className="font-medium mb-2">Informações Básicas</h3>
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Nome</p>
-                      <p className="font-medium">{restaurant.name}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Slug</p>
-                      <p className="font-medium">{restaurant.slug}</p>
-                    </div>
-                    <div className="md:col-span-2">
-                      <p className="text-sm text-muted-foreground">Descrição</p>
-                      <p className="font-medium">{restaurant.description}</p>
-                    </div>
+              <CardContent>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Nome</p>
+                    <p className="font-medium">{restaurant.name}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Slug</p>
+                    <p className="font-medium">{restaurant.slug}</p>
                   </div>
                 </div>
-
-                <div>
-                  <h3 className="font-medium mb-2">Status da Conta</h3>
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Status do Restaurante</p>
-                      <Badge variant={restaurant.isActive ? "default" : "secondary"}>
-                        {restaurant.isActive ? "Ativo" : "Inativo"}
-                      </Badge>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Pagamentos Stripe</p>
-                      <Badge variant={restaurant.stripeOnboarded ? "default" : "destructive"}>
-                        {restaurant.stripeOnboarded ? "Configurado" : "Pendente"}
-                      </Badge>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Plano</p>
-                      <Badge variant="outline">
-                        {restaurant.subscriptionStatus.toUpperCase()}
-                      </Badge>
-                    </div>
-                  </div>
-                </div>
-
-                {!restaurant.stripeOnboarded && (
-                  <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                    <h4 className="font-medium text-yellow-800 mb-2">
-                      Configure os pagamentos
-                    </h4>
-                    <p className="text-sm text-yellow-700 mb-3">
-                      Para receber pedidos, você precisa configurar sua conta do Stripe.
-                    </p>
-                    <Button>Configurar Pagamentos</Button>
-                  </div>
-                )}
               </CardContent>
             </Card>
           </TabsContent>
