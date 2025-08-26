@@ -25,11 +25,12 @@ const LoginPage = () => {
       const data = await response.json();
 
       if (response.ok) {
-        // Redireciona direto para pedidos novos
-        router.push(`/admin/${data.user.restaurant.slug}/pedidos/novos`);
-      } else {
-        setError(data.error || 'Erro ao fazer login');
-      }
+  // Redireciona para o painel raiz do restaurante
+  router.push(`/admin/${data.user.restaurant.slug}`);
+} else {
+  setError(data.error || 'Erro ao fazer login');
+}
+
     } catch {
       setError('Erro de conexão');
     } finally {
