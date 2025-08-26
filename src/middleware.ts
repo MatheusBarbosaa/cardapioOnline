@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { JWTPayload, verifyToken, isValidJWTPayload } from './lib/auth';
+import { verifyToken, isValidJWTPayload } from './lib/auth';
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -9,30 +9,29 @@ export async function middleware(request: NextRequest) {
     !pathname.includes('/login') &&
     !pathname.includes('/register');
 
-  if (isProtectedAdminRoute) {
-    const token = request.cookies.get('auth-token')?.value;
+  if (!isProtectedAdminRoute) return NextResponse.next();
 
-    if (!token) {
-      return NextResponse.redirect(new URL('/admin/login', request.url));
-    }
+  const token = request.cookies.get('auth-token')?.value;
 
-    const payload = await verifyToken(token);
+  if (!token) {
+    return NextResponse.redirect(new URL('/admin/login', request.url));
+  }
 
-    if (!payload || !isValidJWTPayload(payload)) {
-      const response = NextResponse.redirect(new URL('/admin/login', request.url));
-      response.cookies.set('auth-token', '', { maxAge: -1 }); // remove token inválido
-      return response;
-    }
+  const payload = await verifyToken(token);
 
-    // Auth OK
-    const response = NextResponse.next();
-    response.headers.set('x-user-id', payload.userId);
-    response.headers.set('x-restaurant-id', payload.restaurantId);
-    response.headers.set('x-restaurant-slug', payload.restaurantSlug);
+  if (!payload || !isValidJWTPayload(payload)) {
+    const response = NextResponse.redirect(new URL('/admin/login', request.url));
+    response.cookies.set('auth-token', '', { maxAge: -1 }); // remove token inválido
     return response;
   }
 
-  return NextResponse.next();
+  // Auth OK
+  const response = NextResponse.next();
+  response.headers.set('x-user-id', payload.userId);
+  response.headers.set('x-restaurant-id', payload.restaurantId);
+  response.headers.set('x-restaurant-slug', payload.restaurantSlug);
+
+  return response;
 }
 
 export const config = {
