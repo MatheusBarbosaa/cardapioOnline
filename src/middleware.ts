@@ -1,8 +1,8 @@
+// middleware.ts
 import { NextRequest, NextResponse } from 'next/server';
-
 import { JWTPayload, verifyToken } from './lib/auth';
 
-// Verifica se payload é do tipo esperado
+// Tipagem segura do payload
 function isJWTPayload(obj: unknown): obj is JWTPayload {
   if (typeof obj !== 'object' || obj === null) return false;
 
@@ -17,6 +17,7 @@ function isJWTPayload(obj: unknown): obj is JWTPayload {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // Rotas protegidas do admin (exceto login e register)
   const isProtectedAdminRoute =
     pathname.startsWith('/admin') &&
     !pathname.includes('/login') &&
@@ -24,32 +25,46 @@ export async function middleware(request: NextRequest) {
 
   if (isProtectedAdminRoute) {
     const token = request.cookies.get('auth-token')?.value;
-    
-    // DEBUG: Adicione estes logs temporariamente
+
+    // DEBUG - Remova os logs em produção se desejar
     console.log('🔍 Middleware - Pathname:', pathname);
     console.log('🔍 Middleware - Token exists:', !!token);
-    console.log('🔍 Middleware - Token value:', token ? 'EXISTS' : 'NOT_FOUND');
 
     if (!token) {
       console.log('❌ Middleware - No token, redirecting to login');
       return NextResponse.redirect(new URL('/admin/login', request.url));
     }
 
-    const payload = await verifyToken(token);
-    console.log('🔍 Middleware - Payload:', payload ? 'EXISTS' : 'NULL');
-    console.log('🔍 Middleware - isJWTPayload:', payload ? isJWTPayload(payload) : false);
+    let payload: JWTPayload | null = null;
+
+    try {
+      payload = await verifyToken(token);
+    } catch (err) {
+      console.error('❌ Middleware - Error verifying token:', err);
+    }
 
     if (!payload || !isJWTPayload(payload)) {
       console.log('❌ Middleware - Invalid payload, redirecting to login');
-      return NextResponse.redirect(new URL('/admin/login', request.url));
+      const response = NextResponse.redirect(new URL('/admin/login', request.url));
+      // Limpa o cookie inválido
+      response.cookies.set('auth-token', '', { maxAge: -1 });
+      return response;
     }
 
-    console.log('✅ Middleware - Auth passed, proceeding');
+    console.log('✅ Middleware - Auth passed');
+
+    // Resposta com headers para SSR ou fetch interno
     const response = NextResponse.next();
     response.headers.set('x-user-id', payload.userId);
     response.headers.set('x-restaurant-id', payload.restaurantId);
+
     return response;
   }
 
   return NextResponse.next();
 }
+
+// Ative este middleware apenas para rotas de admin
+export const config = {
+  matcher: ['/admin/:path*'],
+};
