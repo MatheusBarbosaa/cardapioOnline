@@ -12,10 +12,10 @@ import {
   Package,
   Settings, 
   ShoppingBag, 
+  TrendingUp,
   Users
 } from "lucide-react";
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -33,43 +33,23 @@ interface RestaurantWithRelations extends Restaurant {
 
 interface RestaurantAdminPanelProps {
   restaurant: RestaurantWithRelations;
+  currentUser: JWTPayload;
 }
 
-const RestaurantAdminPanel = ({ restaurant }: RestaurantAdminPanelProps) => {
-  const router = useRouter();
+const RestaurantAdminPanel = ({ restaurant, currentUser }: RestaurantAdminPanelProps) => {
   const [activeTab, setActiveTab] = useState("dashboard");
-  const [currentUser, setCurrentUser] = useState<JWTPayload | null>(null);
 
-  // --- JWT AUTH CHECK ---
-  useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      router.push("/login");
-      return;
-    }
-    try {
-      const payloadBase64 = token.split(".")[1];
-      const payload = JSON.parse(atob(payloadBase64)) as JWTPayload;
-      if (Date.now() >= payload.exp * 1000) {
-        localStorage.removeItem("token");
-        router.push("/login");
-      } else {
-        setCurrentUser(payload);
-      }
-    } catch {
-      localStorage.removeItem("token");
-      router.push("/login");
-    }
-  }, [router]);
+  // Garantir fallback caso algum dado venha undefined
+  const products = restaurant.products || [];
+  const menuCategories = restaurant.menuCategories || [];
+  const orders = restaurant.orders || [];
+  const users = restaurant.users || [];
 
-  if (!currentUser) return null; // evita renderizar antes da checagem do token
-
-  // --- Estatísticas ---
-  const totalProducts = restaurant.products.length;
-  const activeProducts = restaurant.products.filter(p => p.isActive).length;
-  const totalCategories = restaurant.menuCategories.length;
-  const totalOrders = restaurant.orders.length;
-  const totalRevenue = restaurant.orders.reduce((sum, order) => sum + order.total, 0);
+  const totalProducts = products.length;
+  const activeProducts = products.filter(p => p.isActive).length;
+  const totalCategories = menuCategories.length;
+  const totalOrders = orders.length;
+  const totalRevenue = orders.reduce((sum, order) => sum + order.total, 0);
 
   const canManageUsers = currentUser.role === "ADMIN";
   const canViewFinancials = ["ADMIN", "MANAGER"].includes(currentUser.role);
@@ -108,27 +88,31 @@ const RestaurantAdminPanel = ({ restaurant }: RestaurantAdminPanelProps) => {
           {/* Navigation Tabs */}
           <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="dashboard" className="flex items-center gap-2">
-              <BarChart3 className="w-4 h-4" />Dashboard
+              <BarChart3 className="w-4 h-4" />
+              Dashboard
             </TabsTrigger>
             <TabsTrigger value="cardapio" className="flex items-center gap-2">
-              <MenuSquare className="w-4 h-4" />Cardápio
+              <MenuSquare className="w-4 h-4" />
+              Cardápio
             </TabsTrigger>
             <TabsTrigger value="pedidos" className="flex items-center gap-2">
-              <ShoppingBag className="w-4 h-4" />Pedidos
+              <ShoppingBag className="w-4 h-4" />
+              Pedidos
             </TabsTrigger>
             {canManageUsers && (
               <TabsTrigger value="usuarios" className="flex items-center gap-2">
-                <Users className="w-4 h-4" />Usuários
+                <Users className="w-4 h-4" />
+                Usuários
               </TabsTrigger>
             )}
             <TabsTrigger value="configuracoes" className="flex items-center gap-2">
-              <Settings className="w-4 h-4" />Configurações
+              <Settings className="w-4 h-4" />
+              Configurações
             </TabsTrigger>
           </TabsList>
 
           {/* Dashboard */}
           <TabsContent value="dashboard" className="space-y-6">
-            {/* Cards de estatísticas */}
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -148,7 +132,9 @@ const RestaurantAdminPanel = ({ restaurant }: RestaurantAdminPanelProps) => {
                     <DollarSign className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">R$ {totalRevenue.toFixed(2)}</div>
+                    <div className="text-2xl font-bold">
+                      R$ {totalRevenue.toFixed(2)}
+                    </div>
                     <p className="text-xs text-muted-foreground">Todos os tempos</p>
                   </CardContent>
                 </Card>
@@ -161,7 +147,9 @@ const RestaurantAdminPanel = ({ restaurant }: RestaurantAdminPanelProps) => {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">{activeProducts}</div>
-                  <p className="text-xs text-muted-foreground">de {totalProducts} produtos</p>
+                  <p className="text-xs text-muted-foreground">
+                    de {totalProducts} produtos
+                  </p>
                 </CardContent>
               </Card>
 
@@ -180,7 +168,10 @@ const RestaurantAdminPanel = ({ restaurant }: RestaurantAdminPanelProps) => {
 
           {/* Cardápio */}
           <TabsContent value="cardapio">
-            <CardapioPageClient categories={restaurant.menuCategories} restaurantSlug={restaurant.slug} />
+            <CardapioPageClient 
+              categories={menuCategories}
+              restaurantSlug={restaurant.slug}
+            />
           </TabsContent>
 
           {/* Pedidos */}
@@ -190,21 +181,24 @@ const RestaurantAdminPanel = ({ restaurant }: RestaurantAdminPanelProps) => {
                 <CardTitle>Gerenciar Pedidos</CardTitle>
               </CardHeader>
               <CardContent>
-                {restaurant.orders.length === 0 ? (
+                {orders.length === 0 ? (
                   <div className="text-center py-12 text-muted-foreground">
                     <ShoppingBag className="w-16 h-16 mx-auto mb-4 opacity-50" />
                     <p>Nenhum pedido encontrado</p>
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {restaurant.orders.map(order => (
+                    {orders.map(order => (
                       <div key={order.id} className="border rounded-lg p-4">
                         <div className="flex justify-between items-start mb-4">
                           <div>
                             <h3 className="font-semibold">Pedido #{order.id}</h3>
-                            <p className="text-sm text-muted-foreground">{order.customerName} • {order.customerCpf}</p>
                             <p className="text-sm text-muted-foreground">
-                              {new Date(order.createdAt).toLocaleDateString('pt-BR')} às {new Date(order.createdAt).toLocaleTimeString('pt-BR')}
+                              {order.customerName} • {order.customerCpf}
+                            </p>
+                            <p className="text-sm text-muted-foreground">
+                              {new Date(order.createdAt).toLocaleDateString('pt-BR')} às{' '}
+                              {new Date(order.createdAt).toLocaleTimeString('pt-BR')}
                             </p>
                           </div>
                           <div className="text-right">
@@ -222,10 +216,10 @@ const RestaurantAdminPanel = ({ restaurant }: RestaurantAdminPanelProps) => {
                           </div>
                         </div>
                         <div className="space-y-2">
-                          {order.orderProducts?.map((orderProduct: any) => (
-                            <div key={orderProduct.id} className="flex justify-between text-sm">
-                              <span>{orderProduct.quantity}x {orderProduct.product?.name}</span>
-                              <span>R$ {(orderProduct.quantity * orderProduct.price).toFixed(2)}</span>
+                          {order.orderProducts?.map((op: any) => (
+                            <div key={op.id} className="flex justify-between text-sm">
+                              <span>{op.quantity}x {op.product?.name}</span>
+                              <span>R$ {(op.quantity * op.price).toFixed(2)}</span>
                             </div>
                           ))}
                         </div>
@@ -246,7 +240,7 @@ const RestaurantAdminPanel = ({ restaurant }: RestaurantAdminPanelProps) => {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {restaurant.users.map(user => (
+                    {users.map(user => (
                       <div key={user.id} className="flex justify-between items-center p-4 border rounded-lg">
                         <div>
                           <p className="font-medium">{user.name}</p>
@@ -278,7 +272,59 @@ const RestaurantAdminPanel = ({ restaurant }: RestaurantAdminPanelProps) => {
                 <CardTitle>Configurações do Restaurante</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                {/* Informações e status */}
+                <div>
+                  <h3 className="font-medium mb-2">Informações Básicas</h3>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Nome</p>
+                      <p className="font-medium">{restaurant.name}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Slug</p>
+                      <p className="font-medium">{restaurant.slug}</p>
+                    </div>
+                    <div className="md:col-span-2">
+                      <p className="text-sm text-muted-foreground">Descrição</p>
+                      <p className="font-medium">{restaurant.description}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="font-medium mb-2">Status da Conta</h3>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Status do Restaurante</p>
+                      <Badge variant={restaurant.isActive ? "default" : "secondary"}>
+                        {restaurant.isActive ? "Ativo" : "Inativo"}
+                      </Badge>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Pagamentos Stripe</p>
+                      <Badge variant={restaurant.stripeOnboarded ? "default" : "destructive"}>
+                        {restaurant.stripeOnboarded ? "Configurado" : "Pendente"}
+                      </Badge>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Plano</p>
+                      <Badge variant="outline">
+                        {restaurant.subscriptionStatus.toUpperCase()}
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
+
+                {!restaurant.stripeOnboarded && (
+                  <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <h4 className="font-medium text-yellow-800 mb-2">
+                      Configure os pagamentos
+                    </h4>
+                    <p className="text-sm text-yellow-700 mb-3">
+                      Para receber pedidos, você precisa configurar sua conta do Stripe.
+                    </p>
+                    <Button>Configurar Pagamentos</Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
