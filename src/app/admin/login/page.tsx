@@ -5,10 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
 const LoginPage = () => {
-  const [formData, setFormData] = useState({
-    email: '',
-    password: ''
-  });
+  const [formData, setFormData] = useState({ email: '', password: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const router = useRouter();
@@ -28,13 +25,12 @@ const LoginPage = () => {
       const data = await response.json();
 
       if (response.ok) {
-        // Sucesso - redirecionar para o painel do restaurante
-        router.push(`/admin/${data.user.restaurant.slug}`);
+        // Redireciona direto para pedidos novos
+        router.push(`/admin/${data.user.restaurant.slug}/pedidos/novos`);
       } else {
         setError(data.error || 'Erro ao fazer login');
       }
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    } catch (error) {
+    } catch {
       setError('Erro de conexão');
     } finally {
       setLoading(false);
@@ -45,12 +41,8 @@ const LoginPage = () => {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
       <div className="bg-white p-8 rounded-xl shadow-sm border w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">
-            Painel Administrativo
-          </h1>
-          <p className="text-gray-600 mt-2">
-            Acesse o painel da sua empresa
-          </p>
+          <h1 className="text-2xl font-bold text-gray-900">Painel Administrativo</h1>
+          <p className="text-gray-600 mt-2">Acesse o painel da sua empresa</p>
         </div>
 
         {error && (
@@ -61,13 +53,11 @@ const LoginPage = () => {
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Email
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
             <input
               type="email"
               value={formData.email}
-              onChange={(e) => setFormData({...formData, email: e.target.value})}
+              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
               placeholder="seu@email.com"
               required
@@ -75,13 +65,11 @@ const LoginPage = () => {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Senha
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Senha</label>
             <input
               type="password"
               value={formData.password}
-              onChange={(e) => setFormData({...formData, password: e.target.value})}
+              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
               className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
               placeholder="••••••••"
               required
