@@ -1,3 +1,5 @@
+// schema.prisma - VERSÃO COMPLETA COM CUPONS
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -23,6 +25,7 @@ model Restaurant {
   products       Product[]
   orders         Order[]
   users          User[]
+  coupons        Coupon[]       // ✅ NOVO: Relacionamento com cupons
   
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
@@ -37,6 +40,8 @@ model User {
   
   restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   restaurantId String
+  
+  createdCoupons Coupon[] // ✅ NOVO: Cupons criados por este usuário
   
   isActive     Boolean    @default(true)
   lastLogin    DateTime?
@@ -86,6 +91,8 @@ model Product {
 model Order {
   id                Int               @id @default(autoincrement())
   total             Float
+  originalTotal     Float?            // ✅ NOVO: Total antes do desconto
+  discountAmount    Float?            // ✅ NOVO: Valor do desconto aplicado
   status            OrderStatus
   consumptionMethod ConsumptionMethod
   restaurant        Restaurant        @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
@@ -93,6 +100,12 @@ model Order {
   orderProducts     OrderProduct[]
   customerName      String
   customerCpf       String
+  
+  // ✅ NOVO: Relacionamento com cupom usado
+  coupon            Coupon?           @relation(fields: [couponId], references: [id])
+  couponId          String?
+  couponCode        String?           // Código usado (para histórico)
+  
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
 }
@@ -107,6 +120,56 @@ model OrderProduct {
   price     Float
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// ✅ NOVO: Modelo Coupon
+model Coupon {
+  id                    String    @id @default(uuid())
+  code                  String    // Código que o cliente digita (ex: "AMIGO001")
+  name                  String    // Nome descritivo (ex: "Desconto de primeira compra")
+  description           String?   // Descrição opcional
+  
+  // Relacionamento com Stripe
+  stripeCouponId        String    @unique // ID do cupom no Stripe
+  stripePromotionCodeId String    @unique // ID do promotion code no Stripe
+  
+  // Configurações do desconto
+  discountType          DiscountType // PERCENTAGE ou FIXED_AMOUNT
+  discountValue         Float     // Valor do desconto (15 para 15% ou 10.50 para R$10,50)
+  
+  // Controles de uso
+  isActive              Boolean   @default(true)
+  maxRedemptions        Int?      // Limite total de usos (null = ilimitado)
+  timesUsed             Int       @default(0) // Contador de usos
+  minOrderAmount        Float?    // Valor mínimo do pedido para usar o cupom
+  
+  // Período de validade
+  startsAt              DateTime? // Quando o cupom fica ativo (null = imediato)
+  expiresAt             DateTime? // Quando expira (null = nunca)
+  
+  // Relacionamento com restaurante
+  restaurant            Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  restaurantId          String
+  
+  // Relacionamento com pedidos que usaram este cupom
+  orders                Order[]
+  
+  // Auditoria
+  createdBy             User      @relation(fields: [createdById], references: [id])
+  createdById           String
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  
+  @@unique([code, restaurantId]) // Código único por restaurante
+  @@index([restaurantId, isActive])
+  @@index([code])
+  @@index([expiresAt])
+}
+
+// ✅ NOVO: Enum para tipos de desconto
+enum DiscountType {
+  PERCENTAGE    // Desconto percentual (ex: 15%)
+  FIXED_AMOUNT  // Valor fixo (ex: R$ 10,00)
 }
 
 enum OrderStatus {
