@@ -171,13 +171,14 @@ export default function OrdersManager({ initialOrders, slug }) {
     try {
       setIsRefreshing(true);
 
-      const res = await fetch(
-        `/api/admin/orders/list?slug=${slug}&hash=${Date.now()}`,
-        { 
-          signal: abortControllerRef.current.signal,
-          headers: { 'Cache-Control': 'no-cache' }
-        }
-      );
+    const res = await fetch(
+  `/api/admin/orders/list?slug=${slug}&hash=${Date.now()}`,
+  { 
+    signal: abortControllerRef.current.signal,
+    headers: { 'Cache-Control': 'no-cache' },
+    credentials: "include" // ← adicione esta linha
+  }
+);
 
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
@@ -249,11 +250,14 @@ export default function OrdersManager({ initialOrders, slug }) {
     );
 
     try {
-      const response = await fetch(`/api/admin/orders/update`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId, status: newStatus }),
-      });
+const response = await fetch(`/api/admin/orders/update`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ orderId, status: newStatus }),
+  credentials: "include" 
+});
+
+
 
       if (!response.ok) throw new Error("Erro ao atualizar status");
 
