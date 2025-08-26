@@ -1,19 +1,19 @@
 import { NextResponse } from "next/server";
-
 import { db } from "@/lib/prisma";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
-  const id = searchParams.get("id");
+  const restaurantId = searchParams.get("restaurantId");
 
-  if (!id) {
-    return NextResponse.json({ order: null });
+  if (!restaurantId) {
+    return NextResponse.json({ orders: [] });
   }
 
-  const order = await db.order.findUnique({
-    where: { id: Number(id) },
+  const orders = await db.order.findMany({
+    where: { restaurantId: Number(restaurantId) },
+    orderBy: { createdAt: "desc" },
     include: { orderProducts: { include: { product: true } } },
   });
 
-  return NextResponse.json({ order });
+  return NextResponse.json({ orders });
 }
