@@ -6,11 +6,11 @@ import { useCallback, useEffect, useState } from "react";
 export default function OrderStatusClient({ initialOrder }) {
   const [order, setOrder] = useState(initialOrder);
   const [lastUpdate, setLastUpdate] = useState(new Date());
-  const [connectionStatus, setConnectionStatus] = useState("connected");
+  const [connectionStatus, setConnectionStatus] = useState("connecting");
 
   const statusLabels = {
     PAYMENT_CONFIRMED: "Pagamento Confirmado",
-    IN_PREPARATION: "Em Preparo",
+    IN_PREPARATION: "Em Preparo", 
     FINISHED: "Pronto para Retirada",
     PENDING: "Aguardando Pagamento",
     PAYMENT_FAILED: "Pagamento Falhou",
@@ -76,33 +76,53 @@ export default function OrderStatusClient({ initialOrder }) {
     }
   }, []);
 
-  // Configurar Pusher autenticado
+  // ✅ Configurar Pusher CORRIGIDO
   useEffect(() => {
+    console.log("🔄 Inicializando Pusher para pedido:", order.id);
+    
     const pusherClient = new PusherJS(process.env.NEXT_PUBLIC_PUSHER_KEY!, {
-      cluster: process.env.PUSHER_CLUSTER!,
-      authEndpoint: "/api/pusher/auth",
-      auth: {
-        params: { orderId: order.id },
-      },
+      cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER!, // ✅ CORREÇÃO 1: Usar variável pública
     });
 
-    const channel = pusherClient.subscribe(`order-${order.id}`);
+    const channelName = `order-${order.id}`;
+    console.log("📡 Conectando ao canal:", channelName);
+    
+    const channel = pusherClient.subscribe(channelName);
 
-    channel.bind("status-update", (data: { status: string }) => {
+    // ✅ CORREÇÃO 2: Evento correto "status-updated"
+    channel.bind("status-updated", (data) => {
+      console.log("📨 Evento recebido:", data);
+      
       setOrder((prevOrder) => {
         if (prevOrder.status !== data.status) {
+          console.log(`🔄 Status mudou: ${prevOrder.status} → ${data.status}`);
           setLastUpdate(new Date());
-          if (data.status === "FINISHED") playFinishedSound();
+          if (data.status === "FINISHED") {
+            playFinishedSound();
+          }
         }
         return { ...prevOrder, status: data.status };
       });
     });
 
-    pusherClient.connection.bind("state_change", (states: any) => {
+    // ✅ CORREÇÃO 3: Logs de debug da conexão
+    pusherClient.connection.bind("state_change", (states) => {
+      console.log(`🔌 Pusher connection: ${states.previous} → ${states.current}`);
       setConnectionStatus(states.current);
     });
 
+    // ✅ Log de sucesso da subscrição
+    channel.bind("pusher:subscription_succeeded", () => {
+      console.log("✅ Inscrito com sucesso no canal:", channelName);
+    });
+
+    // ✅ Log de erro
+    channel.bind("pusher:subscription_error", (error) => {
+      console.error("❌ Erro na subscrição:", error);
+    });
+
     return () => {
+      console.log("🔌 Desconectando Pusher...");
       channel.unsubscribe();
       pusherClient.disconnect();
     };

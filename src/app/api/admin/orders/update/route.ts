@@ -1,63 +1,118 @@
-// app/api/admin/orders/update/route.js
-import { verify } from "jsonwebtoken";
-import { cookies } from "next/headers";
-import { NextResponse } from "next/server";
+// src/app/api/admin/orders/update/route.ts
+import { NextRequest, NextResponse } from "next/server";
 
-import { db } from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
+import { pusherServer } from "@/lib/pusher";
 
-export async function POST(request) {
+export async function POST(request: NextRequest) {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get("auth-token")?.value;
+    const body = await request.json();
+    const { orderId, status } = body;
 
-    if (!token) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    console.log("🔄 Update Order - Dados recebidos:", { orderId, status });
+
+    if (!orderId || !status) {
+      return NextResponse.json(
+        { error: "orderId e status são obrigatórios" },
+        { status: 400 }
+      );
     }
 
-    // Verificar token
-    const decoded = verify(token, process.env.JWT_SECRET);
-    if (!decoded) {
-      return NextResponse.json({ error: "Token inválido" }, { status: 401 });
-    }
-
-    const { orderId, status } = await request.json();
-
-    // Validar status permitidos
-    const validStatuses = ["PAYMENT_CONFIRMED", "IN_PREPARATION", "FINISHED"];
-    if (!validStatuses.includes(status)) {
-      return NextResponse.json({ error: "Status inválido" }, { status: 400 });
-    }
-
-    // Verificar se o pedido pertence ao restaurante do admin
-    const order = await db.order.findFirst({
-      where: {
-        id: orderId,
-        restaurantId: decoded.restaurantId,
+    const existingOrder = await prisma.order.findUnique({
+      where: { id: parseInt(orderId) },
+      include: {
+        restaurant: { select: { id: true, slug: true, name: true } },
+        orderProducts: {
+          include: {
+            product: { select: { id: true, name: true, price: true } },
+          },
+        },
       },
     });
 
-    if (!order) {
-      return NextResponse.json({ error: "Pedido não encontrado" }, { status: 404 });
+    if (!existingOrder) {
+      return NextResponse.json(
+        { error: "Pedido não encontrado" },
+        { status: 404 }
+      );
     }
 
-    // Atualizar status
-    await db.order.update({
-      where: { id: orderId },
-      data: { 
+    const updatedOrder = await prisma.order.update({
+      where: { id: parseInt(orderId) },
+      data: {
         status,
-        updatedAt: new Date()
+        updatedAt: new Date(),
+      },
+      include: {
+        restaurant: { select: { id: true, slug: true, name: true } },
+        orderProducts: {
+          include: {
+            product: { select: { id: true, name: true, price: true } },
+          },
+        },
       },
     });
 
-    return NextResponse.json({ success: true });
+    console.log("✅ Pedido atualizado:", {
+      orderId: updatedOrder.id,
+      status: updatedOrder.status,
+      restaurantSlug: updatedOrder.restaurant?.slug,
+    });
 
-  } catch (error) {
-    console.error("Erro ao atualizar status:", error);
+    if (pusherServer && updatedOrder.restaurant?.slug) {
+      try {
+        // Notificar admin
+        await pusherServer.trigger(
+          `restaurant-${updatedOrder.restaurant.slug}`,
+          "update-order",
+          {
+            orderId: updatedOrder.id,
+            status: updatedOrder.status,
+            order: updatedOrder,
+            timestamp: new Date().toISOString(),
+          }
+        );
+
+        // Notificar cliente
+        await pusherServer.trigger(
+          `order-${updatedOrder.id}`,
+          "status-update", // <-- corrigido (sem o "d" no final)
+          {
+            orderId: updatedOrder.id,
+            status: updatedOrder.status,
+            order: updatedOrder,
+            timestamp: new Date().toISOString(),
+          }
+        );
+
+        console.log("📡 Notificações enviadas:", {
+          adminChannel: `restaurant-${updatedOrder.restaurant.slug}`,
+          clientChannel: `order-${updatedOrder.id}`,
+          status: updatedOrder.status,
+        });
+      } catch (err) {
+        console.error("❌ Erro ao enviar notificação Pusher:", err);
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      order: updatedOrder,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error: any) {
+    console.error("❌ Erro ao atualizar pedido:", error);
     return NextResponse.json(
-      { error: "Erro interno do servidor" },
+      {
+        error: "Erro interno do servidor",
+        details:
+          process.env.NODE_ENV === "development" ? error.message : undefined,
+      },
       { status: 500 }
     );
   }
 }
 
-export const runtime = "nodejs";
+export async function PUT(request: NextRequest) {
+  return POST(request);
+}

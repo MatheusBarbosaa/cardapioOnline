@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 import { verifyAuthServer } from '@/lib/auth'
 import { db } from '@/lib/prisma'
+import { pusherServer } from '@/lib/pusher'
 
 export async function PATCH(
   request: NextRequest,
@@ -60,50 +61,51 @@ export async function PATCH(
       }
     })
 
+    // 🚀 ENVIAR EVENTO PUSHER PARA O CLIENTE
+    if (pusherServer) {
+      try {
+        await pusherServer.trigger(
+          `order-${orderId}`, // Canal específico do pedido
+          'status-update',     // Nome do evento
+          {
+            orderId: orderId,
+            status: status,
+            updatedAt: new Date().toISOString()
+          }
+        )
+        console.log(`✅ Pusher event sent: order-${orderId} status-update`)
+      } catch (pusherError) {
+        console.error('❌ Erro ao enviar evento Pusher:', pusherError)
+        // Não retornamos erro aqui para não quebrar a atualização do status
+      }
+    } else {
+      console.error('❌ pusherServer não está configurado')
+    }
+
+    // 🚀 TAMBÉM ENVIAR PARA O CANAL DE ADMINISTRAÇÃO (para atualizar listas do admin)
+    if (pusherServer) {
+      try {
+        await pusherServer.trigger(
+          'orders-changes', // Canal geral para administração
+          'order-updated',  // Nome do evento
+          {
+            orderId: orderId,
+            status: status,
+            restaurantId: user.restaurantId,
+            updatedAt: new Date().toISOString(),
+            order: updatedOrder // Enviar o pedido completo
+          }
+        )
+        console.log(`✅ Pusher admin event sent: orders-changes order-updated`)
+      } catch (pusherError) {
+        console.error('❌ Erro ao enviar evento Pusher para admin:', pusherError)
+      }
+    }
+
     return NextResponse.json(updatedOrder)
 
   } catch (error) {
     console.error('Erro ao atualizar status do pedido:', error)
-    return NextResponse.json(
-      { error: 'Erro interno do servidor' }, 
-      { status: 500 }
-    )
-  }
-}
-
-// app/api/orders/[orderId]/route.ts
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { orderId: string } }
-) {
-  try {
-    const orderId = parseInt(params.orderId)
-    if (isNaN(orderId)) {
-      return NextResponse.json({ error: 'ID do pedido inválido' }, { status: 400 })
-    }
-
-    const { searchParams } = new URL(request.url)
-    const includeProducts = searchParams.get('includeProducts') === 'true'
-
-    const order = await db.order.findUnique({
-      where: { id: orderId },
-      include: includeProducts ? {
-        orderProducts: {
-          include: {
-            product: true
-          }
-        }
-      } : undefined
-    })
-
-    if (!order) {
-      return NextResponse.json({ error: 'Pedido não encontrado' }, { status: 404 })
-    }
-
-    return NextResponse.json({ data: order })
-
-  } catch (error) {
-    console.error('Erro ao buscar pedido:', error)
     return NextResponse.json(
       { error: 'Erro interno do servidor' }, 
       { status: 500 }

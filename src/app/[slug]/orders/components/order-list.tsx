@@ -4,12 +4,13 @@ import { OrderStatus, Prisma } from "@prisma/client";
 import { AlertCircle, CheckCircle, ChefHat, ChevronLeftIcon, Clock, ScrollTextIcon } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { formatCurrency } from "@/helpers/format-currency";
+import { pusherClient } from "@/lib/pusher";
 
 interface OrderListProps {
   orders: Array<
@@ -22,6 +23,7 @@ interface OrderListProps {
       };
     }>
   >;
+  restaurantSlug: string;
 }
 
 const getStatusLabel = (status: OrderStatus) => {
@@ -60,14 +62,12 @@ const getStatusMessage = (status: OrderStatus) => {
   return "";
 };
 
-const OrderList = ({ orders: initialOrders }: OrderListProps) => {
+const OrderList = ({ orders: initialOrders, restaurantSlug }: OrderListProps) => {
   const router = useRouter();
   const [orders, setOrders] = useState(initialOrders);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<string>("connecting");
   const [lastUpdate, setLastUpdate] = useState(new Date());
   const [notifications, setNotifications] = useState<{ [key: number]: string }>({});
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const prevOrdersRef = useRef(initialOrders);
 
   const handleBackClick = () => router.back();
 
@@ -79,74 +79,109 @@ const OrderList = ({ orders: initialOrders }: OrderListProps) => {
     } catch (error) {}
   };
 
-  // Polling otimizado com lastUpdate
-  const fetchOrdersUpdate = async () => {
-    if (orders.length === 0) return;
-
-    try {
-      setIsRefreshing(true);
-
-      const ids = orders.map((o) => o.id).join(",");
-      const response = await fetch(
-        `/api/admin/orders/list?orderIds=${ids}&lastUpdate=${lastUpdate.toISOString()}`,
-        { cache: "no-store" }
-      );
-
-      if (!response.ok) return;
-
-      const data = await response.json();
-      if (!data.data || data.data.length === 0) return;
-
-      const updatedOrders = orders.map((order) => {
-        const updated = data.data.find((o: any) => o.id === order.id);
-        return updated || order;
+  const showNotification = (orderId: number, message: string) => {
+    setNotifications(prev => ({ ...prev, [orderId]: message }));
+    setTimeout(() => {
+      setNotifications(prev => {
+        const newNotifications = { ...prev };
+        delete newNotifications[orderId];
+        return newNotifications;
       });
+    }, 5000);
+  };
 
-      // Notificações para mudanças de status
-      const newNotifications: { [key: number]: string } = {};
-      updatedOrders.forEach((newOrder, index) => {
-        const oldOrder = prevOrdersRef.current[index];
-        if (oldOrder && oldOrder.status !== newOrder.status) {
-          newNotifications[newOrder.id] = `Status atualizado: ${getStatusLabel(newOrder.status)}`;
-          if (newOrder.status === "IN_PREPARATION" || newOrder.status === "FINISHED") playNotificationSound();
+  // 🚀 REAL-TIME com Pusher - substituindo polling
+  useEffect(() => {
+    if (!pusherClient) {
+      console.error('Pusher client não está disponível');
+      return;
+    }
+
+    // Configurar múltiplos canais para diferentes tipos de atualizações
+    const channels: any[] = [];
+
+    // 1. Canal para cada pedido individual (para atualizações de status)
+    orders.forEach(order => {
+      const orderChannel = pusherClient.subscribe(`order-${order.id}`);
+      channels.push(orderChannel);
+
+      orderChannel.bind('status-update', (data: { orderId: number; status: string }) => {
+        console.log(`Status update para pedido ${order.id}:`, data);
+        
+        if (data.orderId === order.id) {
+          setOrders(prev => prev.map(o => 
+            o.id === data.orderId 
+              ? { ...o, status: data.status, updatedAt: new Date() }
+              : o
+          ));
+          
+          setLastUpdate(new Date());
+          showNotification(data.orderId, `Status atualizado: ${getStatusLabel(data.status as OrderStatus)}`);
+          
+          if (data.status === "IN_PREPARATION" || data.status === "FINISHED") {
+            playNotificationSound();
+          }
         }
       });
+    });
 
-      if (Object.keys(newNotifications).length > 0) {
-        setNotifications(newNotifications);
-        setTimeout(() => setNotifications({}), 5000);
+    // 2. Canal geral para novos pedidos (caso o usuário tenha múltiplos pedidos)
+    const generalChannel = pusherClient.subscribe('orders-changes');
+    channels.push(generalChannel);
+
+    generalChannel.bind('order-created', async (data: { orderId: number; restaurantSlug: string }) => {
+      console.log('Novo pedido criado:', data);
+      
+      if (data.restaurantSlug === restaurantSlug) {
+        // Buscar o pedido completo
+        try {
+          const response = await fetch(`/api/orders/${data.orderId}?includeProducts=true`);
+          if (response.ok) {
+            const { data: newOrder } = await response.json();
+            if (newOrder) {
+              setOrders(prev => [newOrder, ...prev]);
+              setLastUpdate(new Date());
+              showNotification(data.orderId, `Novo pedido #${data.orderId} criado!`);
+            }
+          }
+        } catch (error) {
+          console.error('Erro ao buscar novo pedido:', error);
+        }
       }
+    });
 
-      setOrders(updatedOrders);
-      prevOrdersRef.current = updatedOrders;
-      setLastUpdate(new Date(data.timestamp));
-    } catch (error) {
-      console.error("Erro ao atualizar pedidos:", error);
-    } finally {
-      setIsRefreshing(false);
+    // Monitorar status da conexão
+    pusherClient.connection.bind('state_change', (states: any) => {
+      setConnectionStatus(states.current);
+      console.log('Pusher connection state:', states.current);
+    });
+
+    // Cleanup
+    return () => {
+      channels.forEach(channel => {
+        channel.unbind('status-update');
+        channel.unbind('order-created');
+        pusherClient.unsubscribe(channel.name);
+      });
+    };
+  }, [orders, restaurantSlug]);
+
+  // Função para obter informações de conexão
+  const getConnectionStatusInfo = () => {
+    switch (connectionStatus) {
+      case "connecting":
+        return { color: "bg-blue-500", text: "Conectando..." };
+      case "connected":
+        return { color: "bg-green-500", text: `Conectado • ${lastUpdate.toLocaleTimeString()}` };
+      case "unavailable":
+      case "failed":
+        return { color: "bg-red-500", text: "Erro de conexão" };
+      default:
+        return { color: "bg-gray-500", text: "Conectando..." };
     }
   };
 
-  useEffect(() => {
-    fetchOrdersUpdate();
-
-    intervalRef.current = setInterval(() => {
-      fetchOrdersUpdate();
-    }, 2000);
-
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, []);
-
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (!document.hidden) fetchOrdersUpdate();
-    };
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, []);
+  const connectionInfo = getConnectionStatusInfo();
 
   return (
     <div className="space-y-6 p-6 relative">
@@ -160,11 +195,12 @@ const OrderList = ({ orders: initialOrders }: OrderListProps) => {
           <h2 className="text-lg font-semibold">Meus Pedidos</h2>
         </div>
         <div className="flex items-center gap-2 text-xs text-gray-500">
-          <div className={`w-2 h-2 rounded-full ${isRefreshing ? "bg-blue-500 animate-pulse" : "bg-green-500"}`}></div>
-          {isRefreshing ? "Atualizando..." : `Última: ${lastUpdate.toLocaleTimeString()}`}
+          <div className={`w-2 h-2 rounded-full ${connectionInfo.color} ${connectionStatus === "connecting" ? "animate-pulse" : ""}`}></div>
+          {connectionInfo.text}
         </div>
       </div>
 
+      {/* Notificações */}
       {Object.entries(notifications).map(([orderId, message]) => (
         <div
           key={orderId}
@@ -292,8 +328,8 @@ const OrderList = ({ orders: initialOrders }: OrderListProps) => {
 
       <div className="text-center text-xs text-gray-400 py-4">
         <div className="flex items-center justify-center gap-2">
-          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-          Atualizando automaticamente • Última atualização: {lastUpdate.toLocaleTimeString()}
+          <div className={`w-2 h-2 rounded-full ${connectionInfo.color} ${connectionStatus === "connecting" ? "animate-pulse" : ""}`}></div>
+          Atualizações em tempo real • {connectionInfo.text}
         </div>
       </div>
     </div>

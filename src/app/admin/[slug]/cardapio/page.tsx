@@ -1,25 +1,27 @@
 // src/app/admin/[slug]/cardapio/page.tsx
-import { verify } from 'jsonwebtoken';
-import { cookies } from 'next/headers';
-import { redirect } from 'next/navigation';
+import { verify } from "jsonwebtoken";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 
-import { db } from '@/lib/prisma';
+import { db } from "@/lib/prisma";
 
-import CardapioManager from './components/CardapioManager';
+import CardapioManager from "./components/CardapioManager";
 
 interface CardapioPageProps {
-  params: Promise<{ slug: string }>;
+  params: Promise<{ slug: string }>; // agora é Promise
 }
 
 async function getRestaurantWithMenu(slug: string) {
-  const cookieStore = await cookies();
-  const token = cookieStore.get('auth-token')?.value;
+  const cookieStore = await cookies(); // 👈 precisa de await
+  const token = cookieStore.get("auth-token")?.value;
 
-  if (!token) return null;
+  if (!token) {
+    return null;
+  }
 
   try {
     const decoded: any = verify(token, process.env.JWT_SECRET!);
-    
+
     const restaurant = await db.restaurant.findUnique({
       where: { slug },
       include: {
@@ -27,14 +29,14 @@ async function getRestaurantWithMenu(slug: string) {
           include: {
             products: {
               orderBy: {
-                createdAt: 'desc'
-              }
-            }
+                createdAt: "desc",
+              },
+            },
           },
           orderBy: {
-            createdAt: 'asc'
-          }
-        }
+            createdAt: "asc",
+          },
+        },
       },
     });
 
@@ -49,11 +51,16 @@ async function getRestaurantWithMenu(slug: string) {
 }
 
 export default async function CardapioPage({ params }: CardapioPageProps) {
-  const { slug } = await params;
+  const { slug } = await params; 
+
+  if (!slug || slug === "undefined") {
+    redirect("/admin/login");
+  }
+
   const restaurant = await getRestaurantWithMenu(slug);
 
   if (!restaurant) {
-    redirect('/admin/login');
+    redirect("/admin/login");
   }
 
   return (

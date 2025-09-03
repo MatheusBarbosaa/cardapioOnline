@@ -1,7 +1,7 @@
 "use client"
 
 import { Order, OrderProduct, Product } from "@prisma/client"
-import { AlertCircle,Bell, CheckCircle, Clock, Package } from "lucide-react"
+import { AlertCircle, Bell, CheckCircle, Clock, Package } from "lucide-react"
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
 
@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { supabase } from "@/lib/supabase"
+import { pusherClient } from "@/lib/pusher"
 
 interface OrderWithDetails extends Order {
   orderProducts: (OrderProduct & {
@@ -59,46 +59,57 @@ export function OrdersManagement({ initialOrders, restaurantId }: OrdersManageme
   const [orders, setOrders] = useState<OrderWithDetails[]>(initialOrders)
   const [loading, setLoading] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState("all")
+  const [connectionStatus, setConnectionStatus] = useState<string>("connecting")
 
-  // Configurar Real-time subscription
+  // Configurar Real-time subscription com Pusher
   useEffect(() => {
-    const channel = supabase
-      .channel('orders-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'Order',
-          filter: `restaurantId=eq.${restaurantId}`
-        },
-        async (payload) => {
-          console.log('Real-time update:', payload)
-          
-          if (payload.eventType === 'INSERT') {
-            // Buscar o pedido completo com produtos
-            const { data: newOrder } = await fetchOrderWithProducts(payload.new.id)
-            if (newOrder) {
-              setOrders(prev => [newOrder, ...prev])
-              toast.success(`Novo pedido #${payload.new.id} recebido!`, {
-                description: `Cliente: ${payload.new.customerName}`
-              })
-              // Tocar som de notificação (opcional)
-              playNotificationSound()
-            }
-          } else if (payload.eventType === 'UPDATE') {
-            setOrders(prev => prev.map(order => 
-              order.id === payload.new.id 
-                ? { ...order, ...payload.new }
-                : order
-            ))
-          }
+    if (!pusherClient) {
+      console.error('Pusher client não está disponível')
+      return
+    }
+
+    const channel = pusherClient.subscribe('orders-changes')
+    
+    // Escutar novos pedidos
+    channel.bind('order-created', async (data: { orderId: number; restaurantId: string }) => {
+      console.log('Novo pedido recebido via Pusher:', data)
+      
+      if (data.restaurantId === restaurantId) {
+        // Buscar o pedido completo
+        const { data: newOrder } = await fetchOrderWithProducts(data.orderId)
+        if (newOrder) {
+          setOrders(prev => [newOrder, ...prev])
+          toast.success(`Novo pedido #${data.orderId} recebido!`, {
+            description: `Cliente: ${newOrder.customerName}`
+          })
+          playNotificationSound()
         }
-      )
-      .subscribe()
+      }
+    })
+
+    // Escutar atualizações de pedidos
+    channel.bind('order-updated', (data: { orderId: number; status: string; restaurantId: string; order: OrderWithDetails }) => {
+      console.log('Pedido atualizado via Pusher:', data)
+      
+      if (data.restaurantId === restaurantId) {
+        setOrders(prev => prev.map(order => 
+          order.id === data.orderId 
+            ? { ...order, status: data.status, updatedAt: new Date() }
+            : order
+        ))
+      }
+    })
+
+    // Monitorar conexão
+    pusherClient.connection.bind('state_change', (states: any) => {
+      setConnectionStatus(states.current)
+      console.log('Pusher connection state:', states.current)
+    })
 
     return () => {
-      supabase.removeChannel(channel)
+      channel.unbind('order-created')
+      channel.unbind('order-updated')
+      pusherClient.unsubscribe('orders-changes')
     }
   }, [restaurantId])
 
@@ -111,13 +122,11 @@ export function OrdersManagement({ initialOrders, restaurantId }: OrdersManageme
   }
 
   function playNotificationSound() {
-    // Som de notificação simples
     try {
-      const audio = new Audio('/notification.mp3') // Adicione um arquivo de som
+      const audio = new Audio('/notification.mp3')
       audio.play().catch(() => {
-        // Falback silencioso se não conseguir tocar
+        // Fallback silencioso se não conseguir tocar
       })
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (error) {
       // Ignore se não conseguir tocar o som
     }
@@ -139,11 +148,11 @@ export function OrdersManagement({ initialOrders, restaurantId }: OrdersManageme
         throw new Error('Erro ao atualizar status')
       }
 
-      // A atualização via real-time irá atualizar a lista automaticamente
+      // O evento Pusher irá atualizar automaticamente via real-time
       toast.success('Status do pedido atualizado!')
       
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (error) {
+      console.error('Erro ao atualizar status:', error)
       toast.error('Erro ao atualizar status do pedido')
     } finally {
       setLoading(null)
@@ -162,6 +171,23 @@ export function OrdersManagement({ initialOrders, restaurantId }: OrdersManageme
     ["PAYMENT_CONFIRMED", "IN_PREPARATION"].includes(order.status)
   ).length
 
+  // Função para obter informações de conexão
+  const getConnectionStatusInfo = () => {
+    switch (connectionStatus) {
+      case "connecting":
+        return { color: "text-blue-600", text: "Conectando...", icon: "🔄" };
+      case "connected":
+        return { color: "text-green-600", text: "Conectado - Tempo real ativo", icon: "✅" };
+      case "unavailable":
+      case "failed":
+        return { color: "text-red-600", text: "Erro de conexão", icon: "⚠️" };
+      default:
+        return { color: "text-gray-600", text: "Conectando...", icon: "⏳" };
+    }
+  };
+
+  const connectionInfo = getConnectionStatusInfo();
+
   return (
     <div className="space-y-6">
       {/* Header com notificações */}
@@ -175,13 +201,20 @@ export function OrdersManagement({ initialOrders, restaurantId }: OrdersManageme
             </div>
           )}
         </div>
-        <Button
-          onClick={() => window.location.reload()}
-          variant="outline"
-          size="sm"
-        >
-          Atualizar
-        </Button>
+        <div className="flex items-center gap-4">
+          {/* Status da conexão */}
+          <div className="flex items-center gap-2 text-sm">
+            <span>{connectionInfo.icon}</span>
+            <span className={connectionInfo.color}>{connectionInfo.text}</span>
+          </div>
+          <Button
+            onClick={() => window.location.reload()}
+            variant="outline"
+            size="sm"
+          >
+            Atualizar
+          </Button>
+        </div>
       </div>
 
       {/* Filtros */}
