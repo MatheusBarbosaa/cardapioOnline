@@ -11,8 +11,8 @@ const poppins = Poppins({
 });
 
 export const metadata: Metadata = {
-  title: "FSW Donalds",
-  description: "Matheus é lindo!",
+  title: "BeaverTech",
+  description: "Automatizando Pedidos e Cardápios para o Setor Alimentício!",
 };
 
 export default function RootLayout({
