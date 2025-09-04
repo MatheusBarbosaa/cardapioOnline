@@ -58,6 +58,7 @@ export default function SettingsPageClient({ restaurant }: SettingsPageClientPro
       }
     } catch (error) {
       toast.error("Erro na requisição.");
+      console.error("Erro no PUT /api/admin/restaurant:", error);
     }
 
     setLoading(false);
@@ -76,24 +77,23 @@ export default function SettingsPageClient({ restaurant }: SettingsPageClientPro
     uploadFormData.append("file", file);
 
     try {
-      const res = await fetch("/api/upload", {
+      const res = await fetch("/api/admin/upload/product-image", {
         method: "POST",
         body: uploadFormData,
       });
 
       const data = await res.json();
 
-      // ✅ CORREÇÃO FINAL: usar data.imageUrl
       if (res.ok && data.imageUrl) {
         console.log('✅ SUCESSO: Atualizando formData com nova URL:', data.imageUrl);
         setFormData((prev) => ({ ...prev, [field]: data.imageUrl }));
         toast.success("Imagem enviada com sucesso!");
       } else {
-        console.error('❌ Erro na condição - res.ok:', res.ok, 'data.imageUrl:', data.imageUrl);
+        console.error('❌ Erro no upload - res.ok:', res.ok, 'data:', data);
         toast.error("Falha ao enviar imagem.");
       }
     } catch (error) {
-      console.error('❌ Erro no fetch:', error);
+      console.error('❌ Erro no fetch do upload:', error);
       toast.error("Erro no upload da imagem.");
     }
 
@@ -136,13 +136,11 @@ export default function SettingsPageClient({ restaurant }: SettingsPageClientPro
         />
         {formData.avatarImageUrl && (
           <div>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={formData.avatarImageUrl}
               alt="Avatar Preview"
               className="mt-2 h-32 w-32 rounded object-cover"
             />
-            {/* 🔍 DEBUG - Mostrar URL atual */}
             <p className="text-xs text-gray-500 mt-1 break-all">
               URL atual: {formData.avatarImageUrl}
             </p>
@@ -160,13 +158,11 @@ export default function SettingsPageClient({ restaurant }: SettingsPageClientPro
         />
         {formData.coverImageUrl && (
           <div>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={formData.coverImageUrl}
               alt="Cover Preview"
               className="mt-2 h-40 w-full rounded object-cover"
             />
-            {/* 🔍 DEBUG - Mostrar URL atual */}
             <p className="text-xs text-gray-500 mt-1 break-all">
               URL atual: {formData.coverImageUrl}
             </p>
