@@ -1,5 +1,3 @@
-// schema.prisma - VERSÃO COMPLETA COM CUPONS
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -100,6 +98,9 @@ model Order {
   orderProducts     OrderProduct[]
   customerName      String
   customerCpf       String
+  customerPhone     String?           // NOVO: Telefone (obrigatório para ambos)
+  deliveryAddress   String?           // NOVO: Endereço (só para entrega)
+  deliveryReference String?           // NOVO: Ponto de referência (só para entrega)
   
   // ✅ NOVO: Relacionamento com cupom usado
   coupon            Coupon?           @relation(fields: [couponId], references: [id])

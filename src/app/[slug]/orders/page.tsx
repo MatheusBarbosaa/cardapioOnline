@@ -10,33 +10,23 @@ interface OrdersPageProps {
 
 const OrdersPage = async ({ searchParams }: OrdersPageProps) => {
   const { cpf } = await searchParams;
-  if (!cpf) {
+
+  if (!cpf || !isValidCpf(cpf)) {
     return <CpfForm />;
   }
-  if (!isValidCpf(cpf)) {
-    return <CpfForm />;
-  }
+
+  const cleanedCpf = removeCpfPunctuation(cpf);
+
   const orders = await db.order.findMany({
-    orderBy: {
-      createdAt: "desc",
-    },
-    where: {
-      customerCpf: removeCpfPunctuation(cpf),
-    },
+    orderBy: { createdAt: "desc" },
+    where: { customerCpf: cleanedCpf },
     include: {
-      restaurant: {
-        select: {
-          name: true,
-          avatarImageUrl: true,
-        },
-      },
-      orderProducts: {
-        include: {
-          product: true,
-        },
-      },
+      restaurant: { select: { name: true, avatarImageUrl: true } },
+      orderProducts: { include: { product: true } },
     },
+    take: 100,
   });
+
   return <OrderList orders={orders} />;
 };
 
