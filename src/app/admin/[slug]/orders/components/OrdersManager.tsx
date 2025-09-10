@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { usePusher } from "@/hooks/usePusher";
 
+import ReceiptPrinter from "../ReceiptPrinter";
 import StatusIndicator from "./StatusIndicator";
 
 export default function OrdersManager({ initialOrders, slug }) {
@@ -37,7 +38,7 @@ export default function OrdersManager({ initialOrders, slug }) {
   const statusLabels = {
     PAYMENT_CONFIRMED: "Pagamento Confirmado",
     IN_PREPARATION: "Em Preparo",
-    FINISHED: "Pronto para Retirada",
+    FINISHED: "Finalizado",
     PENDING: "Aguardando Pagamento",
     PAYMENT_FAILED: "Pagamento Falhou",
   };
@@ -655,7 +656,27 @@ function OrderCard({
             >
               {statusLabels[order.status] || order.status}
             </span>
+            <span className={`rounded-full px-3 py-1 text-sm font-medium border ${
+              order.consumptionMethod === "TAKEAWAY" 
+                ? "bg-blue-100 text-blue-800 border-blue-200" 
+                : "bg-green-100 text-green-800 border-green-200"
+            }`}>
+              {order.consumptionMethod === "TAKEAWAY" ? "ENTREGA" : "RETIRADA"}
+            </span>
           </div>
+
+          {/* Endereço de entrega (se aplicável) */}
+          {order.consumptionMethod === "TAKEAWAY" && order.deliveryAddress && (
+            <div className="rounded-lg bg-blue-50 p-3 border border-blue-200">
+              <p className="text-sm font-semibold text-blue-800 mb-1">Endereço de Entrega:</p>
+              <p className="text-sm text-blue-700">{order.deliveryAddress}</p>
+              {order.deliveryReference && (
+                <p className="text-sm text-blue-600 mt-1">
+                  <strong>Referência:</strong> {order.deliveryReference}
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="rounded-lg bg-gray-50 p-4">
             <p className="mb-3 text-sm font-semibold text-gray-700">
@@ -710,6 +731,8 @@ function OrderCard({
               )}
             </button>
           )}
+
+          <ReceiptPrinter order={order} />
 
           <div className="text-center text-xs text-gray-500">
             {new Date(order.createdAt).toLocaleDateString()} às{" "}
