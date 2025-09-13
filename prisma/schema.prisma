@@ -19,6 +19,8 @@ model Restaurant {
   isActive       Boolean        @default(true)
   subscriptionStatus String     @default("trial")
   
+   isOpen          Boolean  @default(true) // <-- NOVO: controlar abertura/fechamento da loja
+   
   menuCategories MenuCategory[]
   products       Product[]
   orders         Order[]

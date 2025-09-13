@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { verify } from 'jsonwebtoken';
+import { verify } from "jsonwebtoken";
 import {
   DollarSign,
   ExternalLink,
@@ -7,26 +7,25 @@ import {
   ShoppingCart,
   TrendingUp,
   Users,
-} from 'lucide-react';
-import { cookies } from 'next/headers';
-import Image from 'next/image';
-import Link from 'next/link';
+} from "lucide-react";
+import { cookies } from "next/headers";
+import Image from "next/image";
+import Link from "next/link";
 
-import { db } from '@/lib/prisma';
-
+import StoreToggleButton from "@/components/admin/StoreToggleButton"; // botão de abrir/fechar loja
+import { db } from "@/lib/prisma";
 
 // Tipo para changeType
-type ChangeType = 'positive' | 'negative' | 'neutral';
+type ChangeType = "positive" | "negative" | "neutral";
 
 // Função para buscar dados do restaurante
 async function getRestaurantData(slug: string) {
   const cookieStore = await cookies();
-  const token = cookieStore.get('auth-token')?.value;
+  const token = cookieStore.get("auth-token")?.value;
 
   if (!token) return null;
 
   try {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const decoded = verify(token, process.env.JWT_SECRET!) as any;
 
     const restaurant = await db.restaurant.findUnique({
@@ -66,32 +65,32 @@ export default async function AdminDashboard({ params }: AdminDashboardProps) {
     changeType: ChangeType;
   }[] = [
     {
-      name: 'Pedidos Hoje',
-      value: '0',
+      name: "Pedidos Hoje",
+      value: "0",
       icon: ShoppingCart,
-      change: '+0%',
-      changeType: 'positive',
+      change: "+0%",
+      changeType: "positive",
     },
     {
-      name: 'Faturamento',
-      value: 'R$ 0,00',
+      name: "Faturamento",
+      value: "R$ 0,00",
       icon: DollarSign,
-      change: '+0%',
-      changeType: 'positive',
+      change: "+0%",
+      changeType: "positive",
     },
     {
-      name: 'Clientes',
-      value: '0',
+      name: "Clientes",
+      value: "0",
       icon: Users,
-      change: '+0%',
-      changeType: 'positive',
+      change: "+0%",
+      changeType: "positive",
     },
     {
-      name: 'Produtos',
+      name: "Produtos",
       value: restaurant._count.products.toString(),
       icon: TrendingUp,
-      change: '',
-      changeType: 'neutral',
+      change: "",
+      changeType: "neutral",
     },
   ];
 
@@ -103,7 +102,7 @@ export default async function AdminDashboard({ params }: AdminDashboardProps) {
           <div className="flex items-center space-x-4">
             <div className="relative h-16 w-16 rounded-lg overflow-hidden">
               <Image
-                src={restaurant.avatarImageUrl || '/placeholder-avatar.png'}
+                src={restaurant.avatarImageUrl || "/placeholder-avatar.png"}
                 alt={restaurant.name}
                 fill
                 className="object-cover"
@@ -116,11 +115,11 @@ export default async function AdminDashboard({ params }: AdminDashboardProps) {
                 <span
                   className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                     restaurant.isActive
-                      ? 'bg-green-100 text-green-800'
-                      : 'bg-red-100 text-red-800'
+                      ? "bg-green-100 text-green-800"
+                      : "bg-red-100 text-red-800"
                   }`}
                 >
-                  {restaurant.isActive ? 'Ativo' : 'Inativo'}
+                  {restaurant.isActive ? "Ativo" : "Inativo"}
                 </span>
                 <Link
                   href={`/${restaurant.slug}`}
@@ -134,13 +133,17 @@ export default async function AdminDashboard({ params }: AdminDashboardProps) {
             </div>
           </div>
 
-          <Link
-            href={`/admin/${slug}/settings`}
-            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-          >
-            <Settings className="h-4 w-4 mr-2" />
-            Configurações
-          </Link>
+          {/* Botão de abrir/fechar loja + Configurações */}
+          <div className="flex items-center gap-2">
+            <StoreToggleButton slug={restaurant.slug} initialStatus={restaurant.isOpen} />
+            <Link
+              href={`/admin/${slug}/settings`}
+              className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              <Settings className="h-4 w-4 mr-2" />
+              Configurações
+            </Link>
+          </div>
         </div>
       </div>
 
@@ -170,11 +173,11 @@ export default async function AdminDashboard({ params }: AdminDashboardProps) {
                         {item.change && (
                           <div
                             className={`ml-2 flex items-baseline text-sm font-semibold ${
-                              item.changeType === 'positive'
-                                ? 'text-green-600'
-                                : item.changeType === 'negative'
-                                ? 'text-red-600'
-                                : 'text-gray-500'
+                              item.changeType === "positive"
+                                ? "text-green-600"
+                                : item.changeType === "negative"
+                                ? "text-red-600"
+                                : "text-gray-500"
                             }`}
                           >
                             {item.change}
