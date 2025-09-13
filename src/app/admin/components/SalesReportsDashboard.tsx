@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { Calendar, TrendingUp, DollarSign, ShoppingCart, Users, Download, Filter, RefreshCw } from 'lucide-react';
+import { Calendar, DollarSign, Download, Filter, RefreshCw,ShoppingCart, TrendingUp, Users } from 'lucide-react';
+import React, { useEffect,useState } from 'react';
+import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer,Tooltip, XAxis, YAxis } from 'recharts';
 
 interface SalesReportsDashboardProps {
   slug: string;
@@ -101,40 +101,37 @@ const SalesReportsDashboard: React.FC<SalesReportsDashboardProps> = ({ slug }) =
   };
 
   const handleExport = async () => {
-    setLoading(true);
-    try {
-      // Criar dados para export
-      const exportData = {
-        periodo: selectedPeriod,
-        dataInicio: dateRange.start,
-        dataFim: dateRange.end,
-        restaurante: reportData?.metadata?.restaurant || 'N/A',
-        kpis: getKpiData(),
-        vendas: getCurrentData(),
-        topProdutos: getTopProducts(),
-        categorias: getCategoryData(),
-        geradoEm: new Date().toLocaleString('pt-BR')
-      };
+  setLoading(true);
+  try {
+    const params = new URLSearchParams({
+      slug,
+      period: selectedPeriod,
+      startDate: dateRange.start,
+      endDate: dateRange.end,
+    });
 
-      // Criar e baixar arquivo JSON
-      const blob = new Blob([JSON.stringify(exportData, null, 2)], 
-        { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `relatorio-vendas-${selectedPeriod}-${new Date().toISOString().split('T')[0]}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      
-    } catch (error) {
-      console.error('Erro ao exportar:', error);
-      alert('Erro ao exportar relatório');
-    } finally {
-      setLoading(false);
-    }
-  };
+    const response = await fetch(`/api/admin/reports/sales/excel?${params}`);
+    if (!response.ok) throw new Error("Erro ao gerar Excel");
+
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `relatorio-vendas-${selectedPeriod}-${new Date().toISOString().split("T")[0]}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+
+  } catch (error) {
+    console.error("Erro ao exportar:", error);
+    alert("Erro ao exportar relatório em Excel");
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   // Loading state
   if (loading && !reportData) {
